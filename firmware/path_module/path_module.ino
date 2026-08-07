@@ -44,19 +44,45 @@ uint32_t sequenceNumber = 0;
 uint32_t lastHeartbeat = 0;
 BLECharacteristic *control = nullptr;
 
-void showLed() {
+// The LED is driven only from loop(), never from a BLE callback. rgbLedWrite() goes through
+// the RMT peripheral, and calling it from the Bluedroid callback task failed silently: the
+// relay moved and the serial said FAULT while the LED stayed on its old colour.
+//
+// Colour and rhythm carry different things on purpose, so neither has to be waited out:
+//   colour  -- which module this is, and whether it is faulted. Path 1 green, path 2 blue,
+//              and red on either when the path is cut. Two modules on a bench are then
+//              distinguishable without reading a label.
+//   rhythm  -- whether the tablet is on the line. A slow breath means connected; a double
+//              blink means running but unattended. Motion also separates a healthy board from
+//              a frozen one showing a stale colour, which a steady LED cannot do.
+void updateLed() {
+  uint8_t r = 0, g = 0, b = 0;
   if (faulted) {
-    rgbLedWrite(kLedPin, 60, 0, 0);            // red: the path is broken on purpose
-  } else if (tabletConnected) {
-    rgbLedWrite(kLedPin, 0, 45, 0);            // green: normal, and the tablet is on the line
+    r = 90;
+  } else if (pathIndex == 2) {
+    b = 70;
   } else {
-    rgbLedWrite(kLedPin, 0, 0, 35);            // blue: normal, waiting for the tablet
+    g = 70;  // path 1, and an unidentified board, which its BLE name already flags
   }
+
+  uint32_t scale;
+  if (tabletConnected) {
+    // Triangle breath: the colour stays readable throughout rather than blinking out.
+    const uint32_t phase = millis() % 2000;
+    const uint32_t rise = phase < 1000 ? phase : 2000 - phase;
+    scale = 25 + (rise * 75) / 1000;
+  } else {
+    const uint32_t phase = millis() % 1600;
+    const bool on = phase < 120 || (phase >= 300 && phase < 420);
+    scale = on ? 100 : 6;  // never fully dark: the board should still look powered
+  }
+
+  rgbLedWrite(kLedPin, uint8_t(r * scale / 100), uint8_t(g * scale / 100),
+              uint8_t(b * scale / 100));
 }
 
 void applyRelay() {
   digitalWrite(kRelayPin, faulted ? HIGH : LOW);
-  showLed();
 }
 
 void notifyState(const char *event) {
@@ -77,16 +103,12 @@ void setFaulted(bool value, const char *event) {
 }
 
 class ServerCallbacks final : public BLEServerCallbacks {
-  void onConnect(BLEServer *) override {
-    tabletConnected = true;
-    showLed();
-  }
+  void onConnect(BLEServer *) override { tabletConnected = true; }
   void onDisconnect(BLEServer *server) override {
     tabletConnected = false;
     // A lost tablet must not leave the network cut. Whatever fault was being demonstrated,
     // the safe state is the one that keeps traffic flowing.
     setFaulted(false, "tablet_gone");
-    showLed();
     server->startAdvertising();
   }
 };
@@ -148,6 +170,7 @@ void setup() {
 
 void loop() {
   const uint32_t now = millis();
+  updateLed();
   // Printed from loop(), not setup(): the native USB re-enumerates on reset, so anything
   // setup() prints is gone before a host can open the port. This is the only way to read back
   // which path a board decided it is.
@@ -160,5 +183,5 @@ void loop() {
     lastHeartbeat = now;
     notifyState("heartbeat");
   }
-  delay(10);
+  delay(20);
 }

@@ -70,6 +70,7 @@ bool extractChecksum(const uint8_t *payload, int length, char *out, size_t capac
 
 bool catalogMatches = false;
 char deviceCatalog[64] = "";
+char devicePlatform[64] = "";
 
 // BLE: this board is a peripheral and never a central. The tablet is the only central in the
 // rig, which is what keeps any ESP out of the GATT client code that wedged the previous demo.
@@ -97,6 +98,11 @@ void publishSnapshot(const PortTable &table, bool linkUp) {
   snprintf(line, sizeof(line), "!SWITCH:%lu:%d:%s:%s:%s", (unsigned long)sequenceNumber,
            table.count, linkUp ? "LINK" : "NOLINK", catalogMatches ? "CATALOG_OK" : "CATALOG_BAD",
            deviceCatalog);
+  notifyLine(line);
+  // The device names itself. A part number written into the console would be wrong the day the
+  // LAN9692 replaces the bench LAN9662, with nothing to catch it.
+  snprintf(line, sizeof(line), "!PLATFORM:%lu:%s", (unsigned long)sequenceNumber,
+           devicePlatform[0] ? devicePlatform : "unknown");
   notifyLine(line);
   for (int i = 0; i < table.count; ++i) {
     const PortState &p = table.ports[i];
@@ -172,6 +178,28 @@ void loop() {
       Serial.println();
     }
   }
+  if (catalogMatches && devicePlatform[0] == 0) {
+    int platformBlocks = 0;
+    const int pn = fetchSid(ketiSidFor("ietf-system:system-state/platform"), payload,
+                            sizeof(payload), &code, &platformBlocks);
+    Serial.printf("platform fetch: sid %lu, code %d.%02d, %d bytes\n",
+                  (unsigned long)ketiSidFor("ietf-system:system-state/platform"), code >> 5,
+                  code & 0x1F, pn);
+    if (pn > 0) {
+      Serial.print("  raw: ");
+      for (int i = 0; i < pn && i < 40; ++i) Serial.printf("%02X ", payload[i]);
+      Serial.println();
+      char machine[64] = "";
+      if (coreconfMachine(payload, pn, ketiSidFor("ietf-system:system-state/platform/machine"),
+                          machine, sizeof(machine))) {
+        strncpy(devicePlatform, machine, sizeof(devicePlatform) - 1);
+        Serial.printf("platform: %s\n", devicePlatform);
+      } else {
+        Serial.println("  machine string not found");
+      }
+    }
+  }
+
   // The interface subtree is the dashboard's actual source of data, and it is far too large
   // for one datagram -- this is what the block assembly above exists for.
   if (catalogMatches) {

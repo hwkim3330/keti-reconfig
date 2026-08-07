@@ -34,9 +34,11 @@ static const KetiSidEntry kKetiSidTable[] = {
     {"ietf-interfaces:interfaces/interface/statistics/out-discards", 2056u},
     {"ietf-interfaces:interfaces/interface/statistics/in-unicast-pkts", 2053u},
     {"ietf-interfaces:interfaces/interface/statistics/out-unicast-pkts", 2060u},
+    {"ietf-system:system-state/platform/machine", 19025u},
+    {"ietf-system:system-state/platform/os-version", 19028u},
 };
 
-static constexpr int kKetiSidCount = 15;
+static constexpr int kKetiSidCount = 17;
 
 inline uint32_t ketiSidFor(const char *path) {
   for (int i = 0; i < kKetiSidCount; ++i) {

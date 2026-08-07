@@ -33,3 +33,9 @@
 - "/ietf-interfaces:interfaces/interface/statistics/out-discards"
 - "/ietf-interfaces:interfaces/interface/statistics/in-unicast-pkts"
 - "/ietf-interfaces:interfaces/interface/statistics/out-unicast-pkts"
+
+# What the device calls itself. Read rather than hardcoded: the bench part answers
+# "LAN9662 - ung8291" and the target will answer LAN9692, and a label written into the app
+# would be wrong on one of them without anyone noticing.
+- "/ietf-system:system-state/platform/machine"
+- "/ietf-system:system-state/platform/os-version"

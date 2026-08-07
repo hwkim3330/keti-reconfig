@@ -59,6 +59,7 @@ class SwitchSnapshot {
     required this.ethernetLinkUp,
     required this.catalogOk,
     required this.catalog,
+    this.platform = '',
     required this.receivedAt,
   });
 
@@ -71,6 +72,11 @@ class SwitchSnapshot {
   /// wrong in a way that still looks plausible -- the controller sends no ports at all.
   final bool catalogOk;
   final String catalog;
+
+  /// What the switch calls itself, read from ietf-system. Not a constant in the app: the bench
+  /// part answers LAN9662 and the target answers LAN9692, and a hardcoded label would be
+  /// quietly wrong on one of them.
+  final String platform;
   final DateTime receivedAt;
 }
 
@@ -270,6 +276,8 @@ class KetiLinkService {
       _onSwitchHeader(line);
     } else if (line.startsWith('!PORT:')) {
       _onPort(line);
+    } else if (line.startsWith('!PLATFORM:')) {
+      _onPlatform(line);
     } else if (line.startsWith('!STATE:')) {
       _onPathState(line);
     }
@@ -291,6 +299,14 @@ class KetiLinkService {
     );
     final expected = int.tryParse(f[2]) ?? 0;
     if (expected == 0) _publishSwitch();
+  }
+
+  String _platform = '';
+
+  void _onPlatform(String line) {
+    final f = line.split(':');
+    if (f.length < 3) return;
+    _platform = f.sublist(2).join(':');
   }
 
   void _onPort(String line) {
@@ -327,6 +343,7 @@ class KetiLinkService {
         ethernetLinkUp: header.ethernetLinkUp,
         catalogOk: header.catalogOk,
         catalog: header.catalog,
+        platform: _platform,
         receivedAt: DateTime.now(),
       ),
     );

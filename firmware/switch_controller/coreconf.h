@@ -227,6 +227,67 @@ inline void coreconfValue(CborCursor &c, uint32_t sid, PortTable *table, int por
   cborSkip(c);
 }
 
+// Finds the text value stored under one absolute SID, wherever it sits in the tree. Used for
+// the device's own name: hardcoding "LAN9662" in the console would silently be wrong the day a
+// LAN9692 is plugged in, and nothing would flag it.
+inline bool coreconfFindText(CborCursor &c, uint32_t parentSid, uint32_t wantedSid, char *out,
+                             size_t capacity) {
+  uint8_t major = 0;
+  uint64_t value = 0;
+  bool indefinite = false, isBreak = false;
+  const int start = c.offset;
+  if (!cborHead(c, major, value, indefinite, isBreak) || isBreak) return false;
+
+  if (major == 3) {
+    if (parentSid == wantedSid) {
+      cborText(c, value, out, capacity);
+      return true;
+    }
+    c.offset += int(value);
+    return false;
+  }
+  if (major == 5) {  // map: keys are deltas from this node
+    uint64_t seen = 0;
+    while (true) {
+      if (indefinite) {
+        if (c.offset >= c.length) return false;
+        if (c.data[c.offset] == 0xFF) { ++c.offset; return false; }
+      } else if (seen++ >= value) {
+        return false;
+      }
+      uint8_t keyMajor = 0;
+      uint64_t delta = 0;
+      bool keyIndefinite = false, keyBreak = false;
+      if (!cborHead(c, keyMajor, delta, keyIndefinite, keyBreak) || keyBreak) return false;
+      if (keyMajor != 0) { cborSkip(c); continue; }
+      if (coreconfFindText(c, parentSid + uint32_t(delta), wantedSid, out, capacity)) {
+        return true;
+      }
+    }
+  }
+  if (major == 4) {  // array: elements inherit the list SID
+    uint64_t seen = 0;
+    while (true) {
+      if (indefinite) {
+        if (c.offset >= c.length) return false;
+        if (c.data[c.offset] == 0xFF) { ++c.offset; return false; }
+      } else if (seen++ >= value) {
+        return false;
+      }
+      if (coreconfFindText(c, parentSid, wantedSid, out, capacity)) return true;
+    }
+  }
+  c.offset = start;
+  cborSkip(c);
+  return false;
+}
+
+inline bool coreconfMachine(const uint8_t *payload, int length, uint32_t wantedSid, char *out,
+                            size_t capacity) {
+  CborCursor c{payload, length, 0};
+  return coreconfFindText(c, 0, wantedSid, out, capacity);
+}
+
 // Entry point: the outermost map is keyed by absolute SIDs rather than deltas.
 inline bool parseInterfaces(const uint8_t *payload, int length, PortTable *table) {
   table->count = 0;
