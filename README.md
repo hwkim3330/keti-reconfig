@@ -387,14 +387,23 @@ up 이냐 down 이냐만 보여주는 콘솔은 **"올라와 있는데 상태가
 지금은 **말할 것이 있는 포트만** 보낸다: 링크가 살아있거나, 오류 프레임이 있거나, 스케줄이
 걸려 있는 포트.
 
-## 조사했지만 아직 안 붙인 것
+## 조사했지만 안 붙인 것 (그리고 왜인지)
 
-- **PTP** (`ieee1588-ptp`): 인스턴스가 없다. TAS 는 동기화된 시간에 의존하므로 언젠가 붙일
-  값어치가 크지만, 지금 UI 를 만들면 빈 상자만 보인다.
-- **LLDP** (`ieee802-dot1ab-lldp`): `null`, 꺼져 있다. **스위치 3대가 케이블로 물리면 이것이
-  링 토폴로지를 자동으로 그려준다** — 그때가 제 값이다.
-- 그 밖에 장비가 가진 것: PSFP(802.1Qci), frame preemption(802.1Qbu),
-  802.1CB stream identification(FRER), ACL, aggregation, DHCP, hardware sensors.
+**LLDP 는 이 펌웨어 빌드에서 동작하지 않는다.** YANG 모델은 완전히 들어 있고
+(`/lldp/port/admin-status` 11014, `/lldp/port/remote-systems-data` 11033 — 이웃 테이블이
+있으므로 3대가 물리면 링 토폴로지를 그릴 수 있다) 쓰기도 **오류 없이 받아들여지지만**,
+되읽으면 `port: []` 이고 `local-system-data: null` 이다. 리프만 patch 하면
+`missing-element`(38444) 로 거부되고, 항목째로 만들면 수락되지만 아무것도 생기지 않는다.
+
+**PTP 도 같은 모양이다**: `instances/instance: []`, `ltcs/ltc: []`. 인스턴스를 만들어 보는
+것이 다음 단계이고 아직 안 해봤다.
+
+**그래서 둘 다 파서를 미리 쓰지 않았다.** 볼 수 없는 데이터에 대한 파서는 이 프로젝트에서
+반복적으로 틀렸다(iPATCH 형태, 키 조회, LED 핀). 장비에서 실제 바이트가 나오는 것을 본 뒤에
+쓰는 편이 빠르다.
+
+그 밖에 카탈로그에 있는 것: PSFP(802.1Qci), frame preemption(802.1Qbu),
+802.1CB **stream identification** (FRER 본체는 없음), ACL, aggregation, DHCP, hardware.
 
 ## 저장과 게이팅 해제
 
@@ -423,6 +432,31 @@ up 이냐 down 이냐만 보여주는 콘솔은 **"올라와 있는데 상태가
 카탈로그에 `ieee802-dot1cb-stream-identification` (+`-dev`, `-types`) 은 있지만 이것은
 스트림 **식별**(802.1CB 6장)이다. **복제/제거 본체(`ieee802-dot1cb-frer`)는 없고**,
 sequence-generation / recovery 계열 노드도 카탈로그 전체에 하나도 없다. 매뉴얼과 일치한다.
+
+## 보드 굽기 (tools/flash.sh)
+
+```
+tools/flash.sh switch          # 후보 포트와 MAC 을 보여준다
+tools/flash.sh switch /dev/ttyACM3
+tools/flash.sh path   /dev/ttyACM1
+```
+
+역할마다 보드 옵션이 다르다 — 컨트롤러는 16MB + 옥탈 PSRAM, 슈퍼미니는 4MB + 쿼드. 이걸
+바꿔 구우면 **실패하지 않고 이상하게 동작하는** 보드가 나오므로, README 에 적어두고 복사하게
+하는 대신 스크립트로 만들었다. 포트를 안 주면 ESP32-S3 로 보이는 포트를 **MAC 과 함께**
+나열한다 — 새 보드를 컨트롤러 표에 넣을 때 필요한 값이 바로 그것이다.
+
+### 보드 추가 절차 (전부 합쳐 세 단계)
+
+1. `tools/flash.sh switch` 로 MAC 확인
+2. `switch_controller.ino` 의 `kControllers` 에 한 줄 추가
+   (MAC, 스위치번호, 자기 IP 끝자리, 스위치 IP 끝자리, 업링크 포트)
+3. `tools/flash.sh switch <포트>` — 굽고 꽂으면 `KETI-SWITCH<n>` 으로 광고하고 콘솔이 잡는다
+
+스위치 쪽에 관리 IP 가 없으면 그것만 시리얼로 한 번 만들어 준다
+(`keti-tsn patch setup/setup-ip-static.yaml` → `post setup/save-config.yaml`).
+**새 스위치는 카탈로그가 다를 수 있으므로 SID 테이블을 다시 뽑아야 한다** —
+안 하면 컨트롤러가 `CATALOG_BAD` 로 거부하고 포트를 안 보낸다.
 
 ## 소크 (tools/soak.py)
 
