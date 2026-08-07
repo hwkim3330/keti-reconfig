@@ -1,34 +1,49 @@
-// Which pin is the LED, and is it addressable or plain?
-// Four phases, each visually distinct, so one look settles it without a schematic.
+// Which pin is the LED? Answered by colour, not by counting.
+//
+// The first version of this probe cycled four numbered phases and asked which one lit, which
+// turned out to be ambiguous to watch -- the phases are only distinguishable if you catch the
+// start of the cycle. This one gives each candidate its own colour and holds it long enough
+// to be unmistakable, so a single glance answers the question:
+//
+//   RED    held 4 s  -> the LED is the addressable one on GPIO21
+//   GREEN  held 4 s  -> the LED is the addressable one on GPIO48
+//   BLUE   held 4 s  -> GPIO38, seen on some SuperMini variants
+//   then 3 s dark, and repeat
+//
+// If a plain (non-addressable) LED is fitted instead, none of the above will show and the
+// fast white flicker at the end will: that section drives 21, 48 and 38 as ordinary outputs.
 #include <Arduino.h>
 
-void addressable(int pin) {
-  rgbLedWrite(pin, 40, 0, 0);  delay(1200);   // red
-  rgbLedWrite(pin, 0, 40, 0);  delay(1200);   // green
-  rgbLedWrite(pin, 0, 0, 40);  delay(1200);   // blue
-  rgbLedWrite(pin, 0, 0, 0);   delay(600);
-}
-
-void plain(int pin) {
-  pinMode(pin, OUTPUT);
-  for (int i = 0; i < 6; ++i) {          // fast blink, unmistakable next to the slow fades
-    digitalWrite(pin, HIGH); delay(150);
-    digitalWrite(pin, LOW);  delay(150);
+void hold(int pin, uint8_t r, uint8_t g, uint8_t b, uint32_t ms) {
+  const uint32_t until = millis() + ms;
+  while (millis() < until) {
+    rgbLedWrite(pin, r, g, b);   // refreshed rather than set once: a WS2812 latches, but a
+    delay(200);                  // refresh also survives a glitch on the data line
   }
-  delay(600);
+  rgbLedWrite(pin, 0, 0, 0);
 }
 
 void setup() { Serial.begin(115200); }
 
 void loop() {
-  Serial.println("phase 1: addressable GPIO48 (red green blue)");
-  addressable(48);
-  Serial.println("phase 2: addressable GPIO21 (red green blue)");
-  addressable(21);
-  Serial.println("phase 3: plain GPIO48 (fast blink)");
-  plain(48);
-  Serial.println("phase 4: plain GPIO21 (fast blink)");
-  plain(21);
-  Serial.println("--- cycle end, 3 s gap ---");
+  Serial.println("RED = GPIO21");
+  hold(21, 160, 0, 0, 4000);
+  Serial.println("GREEN = GPIO48");
+  hold(48, 0, 160, 0, 4000);
+  Serial.println("BLUE = GPIO38");
+  hold(38, 0, 0, 160, 4000);
+
+  Serial.println("plain-output flicker on 21 / 48 / 38");
+  for (const int pin : {21, 48, 38}) {
+    pinMode(pin, OUTPUT);
+    for (int i = 0; i < 10; ++i) {
+      digitalWrite(pin, HIGH);
+      delay(80);
+      digitalWrite(pin, LOW);
+      delay(80);
+    }
+  }
+
+  Serial.println("dark 3 s");
   delay(3000);
 }

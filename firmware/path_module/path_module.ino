@@ -15,7 +15,7 @@
 // Signal to the injection relay. Level is set before the pin becomes an output so a reset
 // cannot glitch the relay closed on the way up.
 constexpr int kRelayPin = 13;
-constexpr int kLedPin = 21;  // addressable WS2812; confirmed by tools/led_probe
+constexpr int kLedPin = 48;  // addressable WS2812; confirmed by tools/led_probe
 
 constexpr uint32_t kHeartbeatMs = 1000;
 
@@ -58,23 +58,23 @@ BLECharacteristic *control = nullptr;
 void updateLed() {
   uint8_t r = 0, g = 0, b = 0;
   if (faulted) {
-    r = 90;
+    r = 200;
   } else if (pathIndex == 2) {
-    b = 70;
+    b = 170;
   } else {
-    g = 70;  // path 1, and an unidentified board, which its BLE name already flags
+    g = 170;  // path 1, and an unidentified board, which its BLE name already flags
   }
 
   uint32_t scale;
   if (tabletConnected) {
     // Triangle breath: the colour stays readable throughout rather than blinking out.
-    const uint32_t phase = millis() % 2000;
-    const uint32_t rise = phase < 1000 ? phase : 2000 - phase;
-    scale = 25 + (rise * 75) / 1000;
+    const uint32_t phase = millis() % 3000;
+    const uint32_t rise = phase < 1500 ? phase : 3000 - phase;
+    scale = 40 + (rise * 60) / 1500;
   } else {
-    const uint32_t phase = millis() % 1600;
-    const bool on = phase < 120 || (phase >= 300 && phase < 420);
-    scale = on ? 100 : 6;  // never fully dark: the board should still look powered
+    const uint32_t phase = millis() % 2400;
+    const bool on = phase < 250 || (phase >= 500 && phase < 750);
+    scale = on ? 100 : 15;  // never fully dark: the board should still look powered
   }
 
   rgbLedWrite(kLedPin, uint8_t(r * scale / 100), uint8_t(g * scale / 100),
