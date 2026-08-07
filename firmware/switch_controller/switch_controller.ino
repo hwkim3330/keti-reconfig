@@ -201,7 +201,30 @@ void setup() {
                 ETH.localIP().toString().c_str());
   udp.begin(kCoapPort + 1);
 
-  BLEDevice::init("KETI-SWITCH");
+  // One controller per switch is where this is going -- the RECON topology is three ZCUs, each
+  // with its own LAN9692. Identity comes from the chip rather than a build flag, the same way
+  // the path modules do it, so flashing the wrong board cannot silently produce two switch 1s.
+  uint64_t printedMac = 0;
+  {
+    const uint64_t mac = ESP.getEfuseMac();
+    for (int i = 0; i < 6; ++i) printedMac = (printedMac << 8) | ((mac >> (8 * i)) & 0xFF);
+  }
+  int switchIndex = 0;
+  struct KnownController { uint64_t mac; int index; };
+  static const KnownController kControllers[] = {
+      {0x288485809BD0ULL, 1},
+  };
+  for (const auto &c : kControllers) {
+    if (c.mac == printedMac) switchIndex = c.index;
+  }
+  char bleName[24];
+  if (switchIndex == 0) {
+    snprintf(bleName, sizeof(bleName), "KETI-SWITCH-UNKNOWN");
+  } else {
+    snprintf(bleName, sizeof(bleName), "KETI-SWITCH%d", switchIndex);
+  }
+  Serial.printf("identity: %s (mac %012llX)\n", bleName, printedMac);
+  BLEDevice::init(bleName);
   BLEServer *server = BLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
   BLEService *service = server->createService(kServiceUuid);

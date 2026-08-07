@@ -75,6 +75,10 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   /// is worse than giving it room. The model stays visible either way.
   bool _rightWide = false;
 
+  /// Which switch the inspector is showing. With one switch this never changes and the console
+  /// shows no selector for it -- a single-switch rig should not be made to navigate.
+  KetiDevice? _activeSwitch;
+
   /// A scenario is just the fault state each path should end up in. Kept as data rather than
   /// as a sequence of taps so the console can say what it asked for and, separately, what the
   /// modules reported back.
@@ -100,7 +104,8 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
       await service.setPathFault(entry.key, entry.value);
     }
     if (scenario.switchPort != null) {
-      await service.setPortEnabled(scenario.switchPortName, scenario.switchPort!);
+      final target = _activeSwitch ?? KetiDevice.switch1;
+      await service.setPortEnabled(target, scenario.switchPortName, scenario.switchPort!);
     }
   }
 
@@ -149,8 +154,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
         }
       }
     }
-    final live = state.connected.contains(KetiDevice.switchController) &&
-        _fresh(state.switchSnapshot?.receivedAt);
+    final live = state.switches.values.any((s) => _fresh(s.receivedAt));
     if (_lastSwitchLive != live) {
       if (_lastSwitchLive != null) {
         _log(live ? 'Switch link restored' : 'Switch link lost', warn: !live);
@@ -217,7 +221,12 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(ketiStateProvider);
     final state = async.valueOrNull ?? const KetiState();
-    _updateRates(state.switchSnapshot);
+    final present = state.presentSwitches;
+    final active = present.contains(_activeSwitch)
+        ? _activeSwitch!
+        : (present.isNotEmpty ? present.first : KetiDevice.switch1);
+    final snapshot = state.switches[active];
+    _updateRates(snapshot);
     _recordEvents(state);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncModelFaults(state);
@@ -248,7 +257,12 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               _waitForJsAndInitialize();
             },
           ),
-          Positioned(left: 14, right: 14, top: 10, child: _Header(state: state)),
+          Positioned(
+            left: 14,
+            right: 14,
+            top: 10,
+            child: _Header(state: state, present: present),
+          ),
           if (_leftVisible)
             Positioned(
               left: 14,
@@ -270,6 +284,12 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               width: _rightWide ? 620 : 336,
               child: _SwitchPanel(
                 state: state,
+                active: active,
+                present: present,
+                onSelectSwitch: (device) => setState(() {
+                  _activeSwitch = device;
+                  _selectedPort = null;
+                }),
                 rates: _rates,
                 history: _history,
                 selectedPort: _selectedPort,
@@ -447,13 +467,20 @@ class _Toggle extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.state});
+  const _Header({required this.state, required this.present});
 
   final KetiState state;
+  final List<KetiDevice> present;
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = state.switchSnapshot;
+    // Only devices that have actually shown up. Listing three switches on a one-switch bench
+    // would report two permanent failures that are not failures.
+    final shown = [
+      ...(present.isEmpty ? [KetiDevice.switch1] : present),
+      KetiDevice.path1,
+      KetiDevice.path2,
+    ];
     return _Glass(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       child: Row(
@@ -467,14 +494,14 @@ class _Header extends StatelessWidget {
                 color: Color(0xFF111827)),
           ),
           const SizedBox(width: 16),
-          for (final device in KetiDevice.values) ...[
+          for (final device in shown) ...[
             _LinkPill(
-              label: device.label,
+              label: shown.length <= 3 && device.isSwitch ? 'Switch' : device.label,
               connected: state.connected.contains(device),
               fresh: switch (device) {
-                KetiDevice.switchController => _fresh(snapshot?.receivedAt),
                 KetiDevice.path1 => _fresh(state.pathSnapshots[1]?.receivedAt),
                 KetiDevice.path2 => _fresh(state.pathSnapshots[2]?.receivedAt),
+                _ => _fresh(state.switches[device]?.receivedAt),
               },
             ),
             const SizedBox(width: 6),
@@ -565,9 +592,7 @@ class _ScenarioRail extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final live = KetiDevice.values
-        .where((d) => d != KetiDevice.switchController)
-        .every((d) => state.connected.contains(d));
+    final live = [KetiDevice.path1, KetiDevice.path2].every(state.connected.contains);
 
     return _Glass(
       child: Column(
@@ -591,11 +616,14 @@ class _ScenarioRail extends ConsumerWidget {
           // board that does the CORECONF work the one thing with no row of its own.
           _ModuleLine(
             name: 'Switch ctrl',
-            connected: state.connected.contains(KetiDevice.switchController),
-            fresh: _fresh(state.switchSnapshot?.receivedAt),
-            detail: state.switchSnapshot == null
+            connected: state.presentSwitches.any(state.connected.contains) ||
+                state.connected.contains(KetiDevice.switch1),
+            fresh: state.switches.values.any((s) => _fresh(s.receivedAt)),
+            detail: state.switches.isEmpty
                 ? ''
-                : (state.switchSnapshot!.ethernetLinkUp ? 'Ethernet up' : 'Ethernet down'),
+                : (state.switches.values.every((s) => s.ethernetLinkUp)
+                    ? 'Ethernet up'
+                    : 'Ethernet down'),
           ),
           // Separate from the scenario buttons on purpose: one is what was asked for, the
           // other is what the hardware says happened, and a console that shows only the first
@@ -825,6 +853,9 @@ class _PathStatusLine extends StatelessWidget {
 class _SwitchPanel extends ConsumerWidget {
   const _SwitchPanel({
     required this.state,
+    required this.active,
+    required this.present,
+    required this.onSelectSwitch,
     required this.rates,
     required this.history,
     required this.selectedPort,
@@ -834,6 +865,9 @@ class _SwitchPanel extends ConsumerWidget {
   });
 
   final KetiState state;
+  final KetiDevice active;
+  final List<KetiDevice> present;
+  final void Function(KetiDevice) onSelectSwitch;
   final Map<String, double> rates;
   final Map<String, List<double>> history;
   final String? selectedPort;
@@ -843,8 +877,8 @@ class _SwitchPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final snapshot = state.switchSnapshot;
-    final connected = state.connected.contains(KetiDevice.switchController);
+    final snapshot = state.switches[active];
+    final connected = state.connected.contains(active);
     final fresh = _fresh(snapshot?.receivedAt);
 
     final selected = selectedPort == null
@@ -860,10 +894,11 @@ class _SwitchPanel extends ConsumerWidget {
           history: history[selected.name] ?? const [],
           protected: selected.name == snapshot.protectedPort,
           stale: !fresh,
-          tas: state.tas[selected.name],
+          tas: state.tas[active]?[selected.name],
           onBack: () => onSelectPort(null),
-          onSetEnabled: (enabled) =>
-              ref.read(ketiLinkServiceProvider).setPortEnabled(selected.name, enabled),
+          onSetEnabled: (enabled) => ref
+              .read(ketiLinkServiceProvider)
+              .setPortEnabled(active, selected.name, enabled),
         ),
       );
     }
@@ -883,6 +918,36 @@ class _SwitchPanel extends ConsumerWidget {
               _WidenButton(wide: wide, onTap: onToggleWide),
             ],
           ),
+          if (present.length > 1) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                for (final device in present) ...[
+                  GestureDetector(
+                    onTap: () => onSelectSwitch(device),
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: device == active
+                            ? const Color(0xFFEDF2FD)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: Text(device.label,
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: device == active
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFF9AA3B2))),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ],
+            ),
+          ],
           const SizedBox(height: 6),
           if (!connected)
             const _Note('No link to the switch controller -- nothing measured')
@@ -915,7 +980,7 @@ class _SwitchPanel extends ConsumerWidget {
                   onOpen: () => onSelectPort(snapshot.ports[i].name),
                   onSetEnabled: (enabled) => ref
                       .read(ketiLinkServiceProvider)
-                      .setPortEnabled(snapshot.ports[i].name, enabled),
+                      .setPortEnabled(active, snapshot.ports[i].name, enabled),
                 ),
               ),
             )

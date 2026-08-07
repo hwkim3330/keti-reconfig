@@ -6,21 +6,35 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 /// The three peripherals this console drives. The tablet is the only BLE central in the rig:
 /// the previous demo put an ESP32 in that role and it wedged inside the GATT client with no
 /// timeout, taking down everything that was supposed to recover it.
-enum KetiDevice { switchController, path1, path2 }
+/// One controller per switch is where the rig is going: the RECON topology is three ZCUs,
+/// each with its own LAN9692. The switches are listed explicitly rather than discovered by
+/// pattern -- a console that connects to whatever calls itself a switch would happily attach
+/// to a neighbouring bench.
+enum KetiDevice { switch1, switch2, switch3, path1, path2 }
 
 extension KetiDeviceName on KetiDevice {
   String get advertisedName => switch (this) {
-        KetiDevice.switchController => 'KETI-SWITCH',
+        KetiDevice.switch1 => 'KETI-SWITCH1',
+        KetiDevice.switch2 => 'KETI-SWITCH2',
+        KetiDevice.switch3 => 'KETI-SWITCH3',
         KetiDevice.path1 => 'KETI-PATH1',
         KetiDevice.path2 => 'KETI-PATH2',
       };
 
   String get label => switch (this) {
-        KetiDevice.switchController => 'Switch',
+        KetiDevice.switch1 => 'Switch 1',
+        KetiDevice.switch2 => 'Switch 2',
+        KetiDevice.switch3 => 'Switch 3',
         KetiDevice.path1 => 'Path 1',
         KetiDevice.path2 => 'Path 2',
       };
+
+  bool get isSwitch =>
+      this == KetiDevice.switch1 || this == KetiDevice.switch2 || this == KetiDevice.switch3;
 }
+
+/// The switches, in order. Used wherever the console has to iterate them.
+const kSwitchDevices = [KetiDevice.switch1, KetiDevice.switch2, KetiDevice.switch3];
 
 class SwitchPort {
   const SwitchPort({
@@ -137,28 +151,33 @@ class PathSnapshot {
 class KetiState {
   const KetiState({
     this.connected = const {},
-    this.switchSnapshot,
+    this.switches = const {},
     this.pathSnapshots = const {},
     this.tas = const {},
     this.scanning = false,
   });
 
   final Set<KetiDevice> connected;
-  final SwitchSnapshot? switchSnapshot;
+  final Map<KetiDevice, SwitchSnapshot> switches;
   final Map<int, PathSnapshot> pathSnapshots;
-  final Map<String, TasSnapshot> tas;
+  final Map<KetiDevice, Map<String, TasSnapshot>> tas;
+
+  /// The switches that have ever reported, in device order. One switch is the common case and
+  /// the console shows no selector for it.
+  List<KetiDevice> get presentSwitches =>
+      kSwitchDevices.where(switches.containsKey).toList();
   final bool scanning;
 
   KetiState copyWith({
     Set<KetiDevice>? connected,
-    SwitchSnapshot? switchSnapshot,
+    Map<KetiDevice, SwitchSnapshot>? switches,
     Map<int, PathSnapshot>? pathSnapshots,
-    Map<String, TasSnapshot>? tas,
+    Map<KetiDevice, Map<String, TasSnapshot>>? tas,
     bool? scanning,
   }) {
     return KetiState(
       connected: connected ?? this.connected,
-      switchSnapshot: switchSnapshot ?? this.switchSnapshot,
+      switches: switches ?? this.switches,
       pathSnapshots: pathSnapshots ?? this.pathSnapshots,
       tas: tas ?? this.tas,
       scanning: scanning ?? this.scanning,
@@ -194,10 +213,11 @@ class KetiLinkService {
   final _connectionSubscriptions =
       <KetiDevice, StreamSubscription<BluetoothConnectionState>>{};
   final _connecting = <KetiDevice>{};
-  final _partialPorts = <SwitchPort>[];
-  int _partialSequence = -1;
-  int _expectedPorts = 0;
-  SwitchSnapshot? _pendingHeaderless;
+  final _partialPorts = <KetiDevice, List<SwitchPort>>{};
+  final _partialSequence = <KetiDevice, int>{};
+  final _expectedPorts = <KetiDevice, int>{};
+  final _pendingHeader = <KetiDevice, SwitchSnapshot>{};
+  final _platform = <KetiDevice, String>{};
 
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   Timer? _rescan;
@@ -262,10 +282,8 @@ class KetiLinkService {
       });
 
       final services = await device.discoverServices(timeout: 15);
-      final wantedService =
-          which == KetiDevice.switchController ? _switchService : _pathService;
-      final wantedCharacteristic =
-          which == KetiDevice.switchController ? _switchState : _pathControl;
+      final wantedService = which.isSwitch ? _switchService : _pathService;
+      final wantedCharacteristic = which.isSwitch ? _switchState : _pathControl;
       final service = services.firstWhere((s) => s.uuid == wantedService);
       final characteristic =
           service.characteristics.firstWhere((c) => c.uuid == wantedCharacteristic);
@@ -278,9 +296,7 @@ class KetiLinkService {
 
       _state = _state.copyWith(connected: {..._state.connected, which});
       _emit();
-      if (which != KetiDevice.switchController) {
-        await sendPath(which, '!SYNC');
-      }
+      if (!which.isSwitch) await sendPath(which, '!SYNC');
     } catch (_) {
       try {
         await device.disconnect();
@@ -313,28 +329,29 @@ class KetiLinkService {
     final line = utf8.decode(value, allowMalformed: true).trim();
     if (line.isEmpty) return;
     if (line.startsWith('!SWITCH:')) {
-      _onSwitchHeader(line);
+      _onSwitchHeader(which, line);
     } else if (line.startsWith('!PORT:')) {
-      _onPort(line);
+      _onPort(which, line);
     } else if (line.startsWith('!GCL:')) {
-      _onGcl(line);
+      _onGcl(which, line);
     } else if (line.startsWith('!TAS:')) {
-      _onTas(line);
+      _onTas(which, line);
     } else if (line.startsWith('!PLATFORM:')) {
-      _onPlatform(line);
+      _onPlatform(which, line);
     } else if (line.startsWith('!STATE:')) {
       _onPathState(line);
     }
   }
 
-  void _onSwitchHeader(String line) {
+  void _onSwitchHeader(KetiDevice which, String line) {
     // !SWITCH:<seq>:<portCount>:<LINK|NOLINK>:<CATALOG_OK|CATALOG_BAD>:<catalog>:<uplinkPort>
     final f = line.split(':');
     if (f.length < 6) return;
-    _partialSequence = int.tryParse(f[1]) ?? -1;
-    _partialPorts.clear();
-    _pendingHeaderless = SwitchSnapshot(
-      sequence: _partialSequence,
+    final sequence = int.tryParse(f[1]) ?? -1;
+    _partialSequence[which] = sequence;
+    _partialPorts[which] = <SwitchPort>[];
+    _pendingHeader[which] = SwitchSnapshot(
+      sequence: sequence,
       ports: const [],
       ethernetLinkUp: f[3] == 'LINK',
       catalogOk: f[4] == 'CATALOG_OK',
@@ -342,42 +359,43 @@ class KetiLinkService {
       protectedPort: f.length > 6 ? f[6] : '',
       receivedAt: DateTime.now(),
     );
-    _expectedPorts = int.tryParse(f[2]) ?? 0;
+    _expectedPorts[which] = int.tryParse(f[2]) ?? 0;
     // Nothing is published yet. A snapshot arrives as a header followed by one line per port,
     // and emitting on each line made the console redraw the list thirteen times a cycle,
     // growing from one port to all of them -- which is the flicker. A partial snapshot is also
     // not a reading: it is a reading in progress.
-    if (_expectedPorts == 0) _publishSwitch();
+    if (_expectedPorts[which] == 0) _publishSwitch(which);
   }
 
-  String _platform = '';
-
-  void _onPlatform(String line) {
+  void _onPlatform(KetiDevice which, String line) {
     final f = line.split(':');
     if (f.length < 3) return;
-    _platform = f.sublist(2).join(':');
+    _platform[which] = f.sublist(2).join(':');
   }
 
-  void _onTas(String line) {
+  void _onTas(KetiDevice which, String line) {
     // !TAS:<seq>:<port>:<ON|OFF>:<cycleNs>:<gateStates>
     final f = line.split(':');
     if (f.length < 6) return;
     _state = _state.copyWith(tas: {
       ..._state.tas,
-      f[2]: TasSnapshot(
-        port: f[2],
-        enabled: f[3] == 'ON',
-        cycleNs: int.tryParse(f[4]) ?? 0,
-        gateStates: int.tryParse(f[5]) ?? 0,
-        receivedAt: DateTime.now(),
-      ),
+      which: {
+        ...(_state.tas[which] ?? const {}),
+        f[2]: TasSnapshot(
+          port: f[2],
+          enabled: f[3] == 'ON',
+          cycleNs: int.tryParse(f[4]) ?? 0,
+          gateStates: int.tryParse(f[5]) ?? 0,
+          receivedAt: DateTime.now(),
+        ),
+      },
     });
     _emit();
   }
 
   /// Windows arrive separately from the rest of the gate parameters, so they are merged onto
   /// whatever TAS snapshot is already held for that port rather than replacing it.
-  void _onGcl(String line) {
+  void _onGcl(KetiDevice which, String line) {
     // !GCL:<seq>:<port>:<mask>,<ns>;<mask>,<ns>;...
     final f = line.split(':');
     if (f.length < 4) return;
@@ -391,31 +409,34 @@ class KetiLinkService {
       if (mask == null || ns == null) continue;
       windows.add(GateWindow(mask, ns));
     }
-    final existing = _state.tas[port];
+    final existing = _state.tas[which]?[port];
     if (existing == null) return;
     _state = _state.copyWith(tas: {
       ..._state.tas,
-      port: TasSnapshot(
-        port: port,
-        enabled: existing.enabled,
-        cycleNs: existing.cycleNs,
-        gateStates: existing.gateStates,
-        windows: windows,
-        receivedAt: DateTime.now(),
-      ),
+      which: {
+        ...(_state.tas[which] ?? const {}),
+        port: TasSnapshot(
+          port: port,
+          enabled: existing.enabled,
+          cycleNs: existing.cycleNs,
+          gateStates: existing.gateStates,
+          windows: windows,
+          receivedAt: DateTime.now(),
+        ),
+      },
     });
     _emit();
   }
 
-  void _onPort(String line) {
+  void _onPort(KetiDevice which, String line) {
     // !PORT:<seq>:<i>:<name>:<UP|DOWN>:in:out:inUni:outUni:inErr:outErr:inDisc:outDisc
     final f = line.split(':');
     if (f.length < 13) return;
     final sequence = int.tryParse(f[1]) ?? -1;
     // A port from a different snapshot than the header would mix two readings into one row.
-    if (sequence != _partialSequence) return;
+    if (sequence != _partialSequence[which]) return;
     int at(int i) => int.tryParse(f[i]) ?? 0;
-    _partialPorts.add(SwitchPort(
+    (_partialPorts[which] ??= <SwitchPort>[]).add(SwitchPort(
       index: at(2),
       name: f[3],
       up: f[4] == 'UP',
@@ -428,24 +449,27 @@ class KetiLinkService {
       inDiscards: at(11),
       outDiscards: at(12),
     ));
-    if (_partialPorts.length >= _expectedPorts) _publishSwitch();
+    if ((_partialPorts[which]?.length ?? 0) >= (_expectedPorts[which] ?? 0)) {
+      _publishSwitch(which);
+    }
   }
 
-  void _publishSwitch() {
-    final header = _pendingHeaderless;
+  void _publishSwitch(KetiDevice which) {
+    final header = _pendingHeader[which];
     if (header == null) return;
-    _state = _state.copyWith(
-      switchSnapshot: SwitchSnapshot(
+    _state = _state.copyWith(switches: {
+      ..._state.switches,
+      which: SwitchSnapshot(
         sequence: header.sequence,
-        ports: List.unmodifiable(_partialPorts),
+        ports: List.unmodifiable(_partialPorts[which] ?? const <SwitchPort>[]),
         ethernetLinkUp: header.ethernetLinkUp,
         catalogOk: header.catalogOk,
         catalog: header.catalog,
-        platform: _platform,
+        platform: _platform[which] ?? '',
         protectedPort: header.protectedPort,
         receivedAt: DateTime.now(),
       ),
-    );
+    });
     _emit();
   }
 
@@ -483,8 +507,8 @@ class KetiLinkService {
   /// Asks the controller to enable or disable a switch port. The console deliberately does not
   /// know any SIDs: the controller owns the generated table and is the only thing that checked
   /// the device's catalog, so it is the only thing entitled to write.
-  Future<bool> setPortEnabled(String port, bool enabled) {
-    return sendPath(KetiDevice.switchController, '!PORT:$port:${enabled ? 'UP' : 'DOWN'}');
+  Future<bool> setPortEnabled(KetiDevice which, String port, bool enabled) {
+    return sendPath(which, '!PORT:$port:${enabled ? 'UP' : 'DOWN'}');
   }
 
   Future<bool> setPathFault(int path, bool faulted) {
