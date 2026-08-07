@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -182,7 +183,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               left: 14,
               top: 76,
               bottom: 14,
-              width: 300,
+              width: 268,
               child: _ScenarioRail(
                 state: state,
                 selected: _scenario,
@@ -194,7 +195,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               right: 14,
               top: 76,
               bottom: 14,
-              width: 400,
+              width: 336,
               child: _SwitchPanel(state: state, rates: _rates),
             ),
           Positioned(
@@ -235,8 +236,17 @@ String _age(DateTime? at) {
   return seconds <= 1 ? 'now' : '${seconds}s ago';
 }
 
+// One scale, used everywhere. Three weights and five sizes competing across two panels is
+// what made the console feel busy rather than dense.
+const _kPanelTitle = TextStyle(
+    fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: Color(0xFF111827));
+const _kSectionTitle = TextStyle(
+    fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.3, color: Color(0xFF9AA3B2));
+const _kBody = TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF374151));
+const _kMuted = TextStyle(fontSize: 11, color: Color(0xFF9AA3B2));
+
 class _Glass extends StatelessWidget {
-  const _Glass({required this.child, this.padding = const EdgeInsets.all(13)});
+  const _Glass({required this.child, this.padding = const EdgeInsets.all(16)});
 
   final Widget child;
   final EdgeInsets padding;
@@ -246,11 +256,11 @@ class _Glass extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.93),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE3E8EF)),
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x0F000000)),
         boxShadow: const [
-          BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6)),
+          BoxShadow(color: Color(0x0D000000), blurRadius: 28, offset: Offset(0, 10)),
         ],
       ),
       child: child,
@@ -284,24 +294,35 @@ class _ShellSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _Glass(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.layers_outlined, size: 16, color: Color(0xFF44506A)),
-          const SizedBox(width: 8),
-          Text('Shell ${(opacity * 100).round()}%',
-              style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF44506A))),
+          const Text('Shell', style: _kSectionTitle),
           SizedBox(
-            width: 150,
-            child: Slider(
-              value: opacity,
-              onChanged: onChanged,
-              min: 0,
-              max: 1,
+            width: 128,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                activeTrackColor: const Color(0xFF2563EB),
+                inactiveTrackColor: const Color(0xFFE6E9EF),
+                thumbColor: Colors.white,
+              ),
+              child: Slider(value: opacity, onChanged: onChanged, min: 0, max: 1),
             ),
           ),
+          SizedBox(
+            width: 34,
+            child: Text('${(opacity * 100).round()}%',
+                style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: Color(0xFF6B7280))),
+          ),
+          const SizedBox(width: 10),
           const SizedBox(width: 6),
           _Toggle(label: 'Labels', on: labelsVisible, onTap: onToggleLabels),
           const SizedBox(width: 6),
@@ -328,19 +349,18 @@ class _Toggle extends StatelessWidget {
       child: Container(
         // Fixed width: labels that change length reflow the row, and a tap aimed at one
         // control then lands on its neighbour.
-        width: 96,
+        width: 88,
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(vertical: 7),
         decoration: BoxDecoration(
-          color: on ? const Color(0xFFEAF3FF) : Colors.white,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: on ? const Color(0xFF4EA1FF) : const Color(0xFFE3E8EF)),
+          color: on ? const Color(0xFFEDF2FD) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Text(label,
             style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: on ? const Color(0xFF1F6FD0) : const Color(0xFF44506A))),
+                fontWeight: FontWeight.w600,
+                color: on ? const Color(0xFF2563EB) : const Color(0xFF9AA3B2))),
       ),
     );
   }
@@ -362,7 +382,9 @@ class _Header extends StatelessWidget {
           const SizedBox(width: 12),
           const Text(
             'Reconfig Console',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF172033)),
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2,
+                color: Color(0xFF111827)),
           ),
           const SizedBox(width: 16),
           for (final device in KetiDevice.values) ...[
@@ -398,16 +420,29 @@ class _LinkPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (background, foreground, suffix) = switch ((connected, fresh)) {
-      (true, true) => (const Color(0xFFE7F6EF), const Color(0xFF0F766E), 'live'),
-      (true, false) => (const Color(0xFFFDF3E3), const Color(0xFFB45309), 'silent'),
-      _ => (const Color(0xFFF1F3F6), const Color(0xFF7A8699), 'offline'),
+    // A dot plus the name. The state word was repeated three times across the header and said
+    // less than the colour of the dot already does.
+    final (background, foreground) = switch ((connected, fresh)) {
+      (true, true) => (const Color(0xFFECF7F2), const Color(0xFF0F766E)),
+      (true, false) => (const Color(0xFFFDF4E6), const Color(0xFFB45309)),
+      _ => (const Color(0xFFF3F4F7), const Color(0xFF9AA3B2)),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(9)),
-      child: Text('$label: $suffix',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: foreground)),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(7)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: foreground, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: foreground)),
+        ],
+      ),
     );
   }
 }
@@ -442,12 +477,8 @@ class _ScenarioRail extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Test sequences',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF172033))),
-          const SizedBox(height: 4),
-          const Text('Relay on GPIO13 of each path module',
-              style: TextStyle(fontSize: 11, color: Color(0xFF7A8699))),
-          const SizedBox(height: 12),
+          const Text('Sequences', style: _kPanelTitle),
+          const SizedBox(height: 14),
           for (final scenario in _SwitchConsoleScreenState._scenarios) ...[
             _ScenarioCard(
               scenario: scenario,
@@ -455,12 +486,11 @@ class _ScenarioRail extends ConsumerWidget {
               enabled: live,
               onTap: () => onSelect(scenario),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 2),
           ],
-          const SizedBox(height: 6),
-          const Text('Reported by the modules',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF172033))),
-          const SizedBox(height: 6),
+          const SizedBox(height: 18),
+          const Text('Modules', style: _kSectionTitle),
+          const SizedBox(height: 8),
           // Separate from the scenario buttons on purpose: one is what was asked for, the
           // other is what the hardware says happened, and a console that shows only the first
           // proves nothing.
@@ -472,11 +502,6 @@ class _ScenarioRail extends ConsumerWidget {
                   .contains(path == 1 ? KetiDevice.path1 : KetiDevice.path2),
             ),
           const Spacer(),
-          const Text(
-            'Losing the tablet returns a path to normal. With no operator attached, the safe '
-            'state is the one that keeps traffic flowing.',
-            style: TextStyle(fontSize: 10.5, height: 1.4, color: Color(0xFF8A94A6)),
-          ),
         ],
       ),
     );
@@ -503,29 +528,27 @@ class _ScenarioCard extends StatelessWidget {
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? accent : const Color(0xFFE3E8EF)),
+          // Selection is a fill, not a border. Outlining every card at rest made the rail
+          // read as a grid of buttons rather than a list with one thing chosen.
+          color: selected ? const Color(0xFFF1F5FB) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
-            Icon(faulting ? Icons.link_off_rounded : Icons.check_circle_rounded,
-                size: 17,
-                color: enabled ? accent : const Color(0xFFB9C1CE)),
+            Icon(faulting ? Icons.link_off_rounded : Icons.check_rounded,
+                size: 16,
+                color: !enabled
+                    ? const Color(0xFFC3C9D4)
+                    : (selected ? accent : const Color(0xFFB4BCC9))),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(scenario.title,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: enabled ? const Color(0xFF172033) : const Color(0xFFB9C1CE))),
-                Text(scenario.subtitle,
-                    style: const TextStyle(fontSize: 10.5, color: Color(0xFF8A94A6))),
-              ],
+            Expanded(
+              child: Text(scenario.title,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: enabled ? const Color(0xFF1F2937) : const Color(0xFFC3C9D4))),
             ),
           ],
         ),
@@ -554,7 +577,7 @@ class _PathStatusLine extends StatelessWidget {
         ? const Color(0xFF9AA5B5)
         : (faulted ? const Color(0xFFDC2626) : const Color(0xFF0F766E));
     return Padding(
-      padding: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.only(bottom: 9),
       child: Row(
         children: [
           Container(
@@ -565,16 +588,15 @@ class _PathStatusLine extends StatelessWidget {
           const SizedBox(width: 8),
           Text('Path $path',
               style: const TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF44506A))),
-          const SizedBox(width: 8),
+                  fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+          const Spacer(),
           Text(
             !connected
-                ? 'not connected'
+                ? 'no link'
                 : (!fresh
-                    ? 'silent, ${_age(snapshot?.receivedAt)}'
-                    : '${faulted ? "FAULT" : "NORMAL"}, relay '
-                        '${snapshot!.relayClosed ? "closed" : "open"}'),
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: colour),
+                    ? 'silent ${_age(snapshot?.receivedAt)}'
+                    : (faulted ? 'Fault' : 'Normal')),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colour),
           ),
         ],
       ),
@@ -600,8 +622,7 @@ class _SwitchPanel extends ConsumerWidget {
         children: [
           Text(
             snapshot?.platform.isNotEmpty == true ? snapshot!.platform : 'TSN switch',
-            style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF172033)),
+            style: _kPanelTitle,
           ),
           const SizedBox(height: 6),
           if (!connected)
@@ -624,7 +645,8 @@ class _SwitchPanel extends ConsumerWidget {
               child: ListView.separated(
                 padding: EdgeInsets.zero,
                 itemCount: snapshot.ports.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F6)),
                 itemBuilder: (_, i) => _PortRow(
                   port: snapshot.ports[i],
                   kbps: rates[snapshot.ports[i].name],
@@ -637,12 +659,6 @@ class _SwitchPanel extends ConsumerWidget {
             )
           else
             const Spacer(),
-          const SizedBox(height: 4),
-          const Text(
-            'The name above and the port list both come from the switch itself, so swapping the '
-            'bench LAN9662 for a LAN9692 changes what is shown without changing the app.',
-            style: TextStyle(fontSize: 10.5, height: 1.4, color: Color(0xFF8A94A6)),
-          ),
         ],
       ),
     );
@@ -676,78 +692,89 @@ class _PortRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = stale
-        ? const Color(0xFF9AA5B5)
-        : (port.up ? const Color(0xFF0F766E) : const Color(0xFF9AA5B5));
     final faulty = port.inErrors + port.outErrors + port.inDiscards + port.outDiscards > 0;
     // The controller reaches the switch through this port. Disabling it would strand the
     // controller with no way back, so the control is shown and disabled rather than hidden --
     // an absent button invites someone to wonder where it went.
     final protected = port.name == '1';
+    final accent = stale || !port.up ? const Color(0xFF9AA3B2) : const Color(0xFF0F766E);
 
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FC),
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: const Color(0xFFE3E8EF)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('Port ${port.name}',
-                  style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF172033))),
-              const SizedBox(width: 8),
-              Text(port.up ? 'UP' : 'DOWN',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: accent)),
-              const Spacer(),
-              Text(
-                kbps == null ? '--' : '${kbps!.toStringAsFixed(1)} kbps',
-                style: const TextStyle(
-                    fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF44506A)),
+              Text(port.name.length > 2 ? port.name : 'Port ${port.name}',
+                  style: _kBody),
+              const SizedBox(width: 7),
+              Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(bottom: 2),
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
               ),
-              const SizedBox(width: 8),
-              // A real configuration write: the controller turns this into a CORECONF iPATCH.
-              // Shown as an action rather than a state, because what the port is doing is the
-              // oper-status above it -- this button only says what was asked for.
+              const Spacer(),
+              // Tabular figures: without them the rate jitters sideways as digits change,
+              // which reads as the number being unstable rather than the layout.
+              Text(
+                kbps == null ? '--' : kbps!.toStringAsFixed(1),
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.3,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: Color(0xFF111827)),
+              ),
+              const SizedBox(width: 3),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 1),
+                child: Text('kbps', style: _kMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          _Bar(kbps: kbps ?? 0, muted: stale || !port.up),
+          const SizedBox(height: 7),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${_bytes(port.inOctets)} in   ${_bytes(port.outOctets)} out',
+                  style: _kMuted,
+                ),
+              ),
               GestureDetector(
                 onTap: (stale || protected) ? null : () => onSetEnabled(!port.up),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(7),
-                    border: Border.all(color: const Color(0xFFE3E8EF)),
-                  ),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
                   child: Text(
-                      protected ? 'uplink' : (port.up ? 'disable' : 'enable'),
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          color: (stale || protected)
-                              ? const Color(0xFFB9C1CE)
-                              : const Color(0xFF44506A))),
+                    protected ? 'uplink' : (port.up ? 'Disable' : 'Enable'),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: (stale || protected)
+                          ? const Color(0xFFC3C9D4)
+                          : const Color(0xFF2563EB),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 5),
-          _Bar(kbps: kbps ?? 0),
-          const SizedBox(height: 5),
-          Text(
-            'in ${_bytes(port.inOctets)} / ${port.inUnicast} pkt   '
-            'out ${_bytes(port.outOctets)} / ${port.outUnicast} pkt',
-            style: const TextStyle(fontSize: 10.5, color: Color(0xFF7A8699)),
-          ),
           if (faulty)
-            Text(
-              'errors ${port.inErrors}/${port.outErrors}   '
-              'discards ${port.inDiscards}/${port.outDiscards}',
-              style: const TextStyle(
-                  fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${port.inErrors + port.outErrors} errors   '
+                '${port.inDiscards + port.outDiscards} discards',
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFB45309)),
+              ),
             ),
         ],
       ),
@@ -756,7 +783,7 @@ class _PortRow extends StatelessWidget {
 
   static String _bytes(int value) {
     if (value < 1024) return '$value B';
-    if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(1)} KB';
+    if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(0)} KB';
     return '${(value / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 }
@@ -764,9 +791,10 @@ class _PortRow extends StatelessWidget {
 /// A log scale, because idle management traffic and a loaded port are orders of magnitude
 /// apart and a linear bar would show the quiet ports as nothing at all.
 class _Bar extends StatelessWidget {
-  const _Bar({required this.kbps});
+  const _Bar({required this.kbps, this.muted = false});
 
   final double kbps;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
@@ -778,9 +806,10 @@ class _Bar extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: LinearProgressIndicator(
         value: scaled.clamp(0.0, 1.0),
-        minHeight: 5,
-        backgroundColor: const Color(0xFFE9EDF3),
-        valueColor: const AlwaysStoppedAnimation(Color(0xFF4EA1FF)),
+        minHeight: 3,
+        backgroundColor: const Color(0xFFEEF1F5),
+        valueColor: AlwaysStoppedAnimation(
+            muted ? const Color(0xFFD3D9E2) : const Color(0xFF2563EB)),
       ),
     );
   }
