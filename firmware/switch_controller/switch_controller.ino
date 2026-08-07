@@ -10,6 +10,9 @@
 // Request shape taken from keti-tsn-cli (tsc2cbor/lib/coap/coap.js buildiFetchRequest):
 // FETCH 0.05, Uri-Path "c", Content-Format 141, payload = CBOR array of SIDs.
 #include <Arduino.h>
+#include <BLE2902.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
 #include <ETH.h>
 #include <NetworkUdp.h>
 
@@ -66,6 +69,52 @@ bool extractChecksum(const uint8_t *payload, int length, char *out, size_t capac
 }
 
 bool catalogMatches = false;
+char deviceCatalog[64] = "";
+
+// BLE: this board is a peripheral and never a central. The tablet is the only central in the
+// rig, which is what keeps any ESP out of the GATT client code that wedged the previous demo.
+static const char *kServiceUuid = "9a1e0101-4d3b-4a2f-9c6e-3f1d7b8a2c40";
+static const char *kStateUuid = "9a1e0102-4d3b-4a2f-9c6e-3f1d7b8a2c40";
+
+BLECharacteristic *stateCharacteristic = nullptr;
+bool tabletConnected = false;
+uint32_t sequenceNumber = 0;
+
+void notifyLine(const char *line) {
+  if (stateCharacteristic == nullptr || !tabletConnected) return;
+  stateCharacteristic->setValue((uint8_t *)line, strlen(line));
+  stateCharacteristic->notify();
+  delay(6);  // let the stack drain; a burst of notifications otherwise outruns one interval
+}
+
+// One line per port, plus a header the tablet can use to tell a whole snapshot from a partial
+// one. Every snapshot carries a sequence number: a console that watches only the GATT
+// connection cannot tell a quiet link from a dead one, and will show stale counters as
+// current -- which is exactly how the previous rig misled us.
+void publishSnapshot(const PortTable &table, bool linkUp) {
+  ++sequenceNumber;
+  char line[192];
+  snprintf(line, sizeof(line), "!SWITCH:%lu:%d:%s:%s:%s", (unsigned long)sequenceNumber,
+           table.count, linkUp ? "LINK" : "NOLINK", catalogMatches ? "CATALOG_OK" : "CATALOG_BAD",
+           deviceCatalog);
+  notifyLine(line);
+  for (int i = 0; i < table.count; ++i) {
+    const PortState &p = table.ports[i];
+    snprintf(line, sizeof(line), "!PORT:%lu:%d:%s:%s:%llu:%llu:%llu:%llu:%llu:%llu:%llu:%llu",
+             (unsigned long)sequenceNumber, i, p.name, p.operStatus == 1 ? "UP" : "DOWN",
+             p.inOctets, p.outOctets, p.inUnicast, p.outUnicast, p.inErrors, p.outErrors,
+             p.inDiscards, p.outDiscards);
+    notifyLine(line);
+  }
+}
+
+class ServerCallbacks final : public BLEServerCallbacks {
+  void onConnect(BLEServer *) override { tabletConnected = true; }
+  void onDisconnect(BLEServer *server) override {
+    tabletConnected = false;
+    server->startAdvertising();
+  }
+};
 
 void setup() {
   Serial.begin(115200);
@@ -83,6 +132,20 @@ void setup() {
   Serial.printf("link %s, IP %s\n", ETH.linkUp() ? "UP" : "DOWN",
                 ETH.localIP().toString().c_str());
   udp.begin(kCoapPort + 1);
+
+  BLEDevice::init("KETI-SWITCH");
+  BLEServer *server = BLEDevice::createServer();
+  server->setCallbacks(new ServerCallbacks());
+  BLEService *service = server->createService(kServiceUuid);
+  stateCharacteristic = service->createCharacteristic(
+      kStateUuid, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  stateCharacteristic->addDescriptor(new BLE2902());
+  service->start();
+  BLEAdvertising *advertising = BLEDevice::getAdvertising();
+  advertising->addServiceUUID(kServiceUuid);
+  advertising->setScanResponse(true);
+  BLEDevice::startAdvertising();
+  Serial.println("BLE advertising as KETI-SWITCH");
 }
 
 void loop() {
@@ -99,6 +162,7 @@ void loop() {
     char reported[64] = "";
     if (extractChecksum(payload, n, reported, sizeof(reported))) {
       catalogMatches = strcmp(reported, KETI_SID_CATALOG_CHECKSUM) == 0;
+      strncpy(deviceCatalog, reported, sizeof(deviceCatalog) - 1);
       Serial.printf("  device catalog %s -> %s\n", reported,
                     catalogMatches ? "MATCHES the SID table"
                                    : "DIFFERENT -- SID table must not be used");
@@ -128,11 +192,18 @@ void loop() {
                         p.outOctets, p.outUnicast, p.inErrors, p.outErrors, p.inDiscards,
                         p.outDiscards, p.physAddress);
         }
+        publishSnapshot(table, ETH.linkUp());
       } else {
         Serial.println("  parse failed");
       }
     }
   }
 
-  delay(5000);
+  if (!catalogMatches) {
+    static PortTable empty;
+    empty.count = 0;
+    publishSnapshot(empty, ETH.linkUp());
+  }
+
+  delay(2000);
 }
