@@ -43,3 +43,12 @@
 # Writable: the first configuration this console changes. A boolean is the simplest possible
 # value to encode, and its effect shows up in the port list we already display.
 - "/ietf-interfaces:interfaces/interface/enabled"
+
+# TAS gate parameters, read per port on demand rather than in the periodic snapshot: the
+# interface subtree is already 6.5 KB for thirteen ports and a gate table each would swamp it.
+- "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table"
+- "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/gate-enabled"
+- "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/oper-gate-states"
+- "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-cycle-time/numerator"
+- "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-cycle-time/denominator"
+- "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-control-list/gate-control-entry"

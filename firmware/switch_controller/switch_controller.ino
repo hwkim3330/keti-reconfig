@@ -125,6 +125,14 @@ void publishSnapshot(const PortTable &table, bool linkUp) {
              p.inOctets, p.outOctets, p.inUnicast, p.outUnicast, p.inErrors, p.outErrors,
              p.inDiscards, p.outDiscards);
     notifyLine(line);
+    if (p.tasSeen) {
+      const uint64_t cycleNs = p.cycleDenominator == 0
+                                   ? 0
+                                   : (p.cycleNumerator * 1000000000ULL) / p.cycleDenominator;
+      snprintf(line, sizeof(line), "!TAS:%lu:%s:%s:%llu:%llu", (unsigned long)sequenceNumber,
+               p.name, p.gateEnabled ? "ON" : "OFF", cycleNs, p.gateStates);
+      notifyLine(line);
+    }
   }
 }
 

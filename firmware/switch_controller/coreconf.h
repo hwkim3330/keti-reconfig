@@ -24,6 +24,12 @@ struct PortState {
   uint64_t inErrors, outErrors;
   uint64_t inDiscards, outDiscards;
   uint64_t inUnicast, outUnicast;
+
+  // Gate parameters ride along inside the interface subtree, so they cost no extra request.
+  // This matters: the device's Ethernet CoAP endpoint rejects keyed instance queries with
+  // 4.00, so per-port fetches are not available on this transport at all -- see the README.
+  bool tasSeen;
+  uint64_t gateEnabled, gateStates, cycleNumerator, cycleDenominator;
 };
 
 struct PortTable {
@@ -181,6 +187,42 @@ inline void coreconfValue(CborCursor &c, uint32_t sid, PortTable *table, int por
       port->operStatus = uint8_t(value);
       return;
     }
+    static const char *kGateBase =
+        "ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/"
+        "ieee802-dot1q-sched-bridge:gate-parameter-table";
+    char path[220];
+    snprintf(path, sizeof(path), "%s/oper-gate-states", kGateBase);
+    if (sid == ketiSidFor(path)) { port->gateStates = value; port->tasSeen = true; return; }
+    snprintf(path, sizeof(path), "%s/admin-cycle-time/numerator", kGateBase);
+    if (sid == ketiSidFor(path)) { port->cycleNumerator = value; port->tasSeen = true; return; }
+    snprintf(path, sizeof(path), "%s/admin-cycle-time/denominator", kGateBase);
+    if (sid == ketiSidFor(path)) { port->cycleDenominator = value; port->tasSeen = true; return; }
+    return;
+  }
+
+  // gate-enabled is a boolean, so it arrives as a CBOR simple value rather than an integer.
+  if (major == 7 && port != nullptr && (value == 20 || value == 21)) {
+    char path[220];
+    snprintf(path, sizeof(path),
+             "ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/"
+             "ieee802-dot1q-sched-bridge:gate-parameter-table/gate-enabled");
+    if (sid == ketiSidFor(path)) {
+      port->gateEnabled = value == 21 ? 1 : 0;
+      port->tasSeen = true;
+    }
+    return;
+  }
+
+  // gate-enabled is a boolean, so it arrives as a CBOR simple value rather than an integer.
+  if (major == 7 && port != nullptr && (value == 20 || value == 21)) {
+    char path[220];
+    snprintf(path, sizeof(path),
+             "ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/"
+             "ieee802-dot1q-sched-bridge:gate-parameter-table/gate-enabled");
+    if (sid == ketiSidFor(path)) {
+      port->gateEnabled = value == 21 ? 1 : 0;
+      port->tasSeen = true;
+    }
     return;
   }
 
@@ -265,6 +307,7 @@ inline bool coreconfFindText(CborCursor &c, uint32_t parentSid, uint32_t wantedS
       }
     }
   }
+
   if (major == 4) {  // array: elements inherit the list SID
     uint64_t seen = 0;
     while (true) {
@@ -280,6 +323,62 @@ inline bool coreconfFindText(CborCursor &c, uint32_t parentSid, uint32_t wantedS
   c.offset = start;
   cborSkip(c);
   return false;
+}
+
+/// Finds an unsigned or boolean value stored under one absolute SID. Booleans come back as 1
+/// or 0 so a single call covers both, which is what the gate table needs: gate-enabled is a
+/// boolean sitting beside integer cycle times.
+inline bool coreconfFindUint(CborCursor &c, uint32_t parentSid, uint32_t wantedSid,
+                             uint64_t *out) {
+  uint8_t major = 0;
+  uint64_t value = 0;
+  bool indefinite = false, isBreak = false;
+  const int start = c.offset;
+  if (!cborHead(c, major, value, indefinite, isBreak) || isBreak) return false;
+
+  if (major == 0 && parentSid == wantedSid) { *out = value; return true; }
+  if (major == 7 && parentSid == wantedSid && (value == 20 || value == 21)) {
+    *out = value == 21 ? 1 : 0;   // CBOR false is 20, true is 21
+    return true;
+  }
+  if (major == 5) {
+    uint64_t seen = 0;
+    while (true) {
+      if (indefinite) {
+        if (c.offset >= c.length) return false;
+        if (c.data[c.offset] == 0xFF) { ++c.offset; return false; }
+      } else if (seen++ >= value) {
+        return false;
+      }
+      uint8_t keyMajor = 0;
+      uint64_t delta = 0;
+      bool keyIndefinite = false, keyBreak = false;
+      if (!cborHead(c, keyMajor, delta, keyIndefinite, keyBreak) || keyBreak) return false;
+      if (keyMajor != 0) { cborSkip(c); continue; }
+      if (coreconfFindUint(c, parentSid + uint32_t(delta), wantedSid, out)) return true;
+    }
+  }
+  if (major == 4) {
+    uint64_t seen = 0;
+    while (true) {
+      if (indefinite) {
+        if (c.offset >= c.length) return false;
+        if (c.data[c.offset] == 0xFF) { ++c.offset; return false; }
+      } else if (seen++ >= value) {
+        return false;
+      }
+      if (coreconfFindUint(c, parentSid, wantedSid, out)) return true;
+    }
+  }
+  c.offset = start;
+  cborSkip(c);
+  return false;
+}
+
+inline bool coreconfUint(const uint8_t *payload, int length, uint32_t wantedSid,
+                         uint64_t *out) {
+  CborCursor c{payload, length, 0};
+  return coreconfFindUint(c, 0, wantedSid, out);
 }
 
 inline bool coreconfMachine(const uint8_t *payload, int length, uint32_t wantedSid, char *out,

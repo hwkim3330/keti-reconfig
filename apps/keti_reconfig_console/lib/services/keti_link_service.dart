@@ -86,6 +86,23 @@ class SwitchSnapshot {
   final DateTime receivedAt;
 }
 
+/// One port's gate parameters, fetched on demand rather than carried in every snapshot.
+class TasSnapshot {
+  const TasSnapshot({
+    required this.port,
+    required this.enabled,
+    required this.cycleNs,
+    required this.gateStates,
+    required this.receivedAt,
+  });
+
+  final String port;
+  final bool enabled;
+  final int cycleNs;
+  final int gateStates;
+  final DateTime receivedAt;
+}
+
 class PathSnapshot {
   const PathSnapshot({
     required this.path,
@@ -110,24 +127,28 @@ class KetiState {
     this.connected = const {},
     this.switchSnapshot,
     this.pathSnapshots = const {},
+    this.tas = const {},
     this.scanning = false,
   });
 
   final Set<KetiDevice> connected;
   final SwitchSnapshot? switchSnapshot;
   final Map<int, PathSnapshot> pathSnapshots;
+  final Map<String, TasSnapshot> tas;
   final bool scanning;
 
   KetiState copyWith({
     Set<KetiDevice>? connected,
     SwitchSnapshot? switchSnapshot,
     Map<int, PathSnapshot>? pathSnapshots,
+    Map<String, TasSnapshot>? tas,
     bool? scanning,
   }) {
     return KetiState(
       connected: connected ?? this.connected,
       switchSnapshot: switchSnapshot ?? this.switchSnapshot,
       pathSnapshots: pathSnapshots ?? this.pathSnapshots,
+      tas: tas ?? this.tas,
       scanning: scanning ?? this.scanning,
     );
   }
@@ -163,6 +184,7 @@ class KetiLinkService {
   final _connecting = <KetiDevice>{};
   final _partialPorts = <SwitchPort>[];
   int _partialSequence = -1;
+  int _expectedPorts = 0;
   SwitchSnapshot? _pendingHeaderless;
 
   StreamSubscription<List<ScanResult>>? _scanSubscription;
@@ -282,6 +304,8 @@ class KetiLinkService {
       _onSwitchHeader(line);
     } else if (line.startsWith('!PORT:')) {
       _onPort(line);
+    } else if (line.startsWith('!TAS:')) {
+      _onTas(line);
     } else if (line.startsWith('!PLATFORM:')) {
       _onPlatform(line);
     } else if (line.startsWith('!STATE:')) {
@@ -304,8 +328,12 @@ class KetiLinkService {
       protectedPort: f.length > 6 ? f[6] : '',
       receivedAt: DateTime.now(),
     );
-    final expected = int.tryParse(f[2]) ?? 0;
-    if (expected == 0) _publishSwitch();
+    _expectedPorts = int.tryParse(f[2]) ?? 0;
+    // Nothing is published yet. A snapshot arrives as a header followed by one line per port,
+    // and emitting on each line made the console redraw the list thirteen times a cycle,
+    // growing from one port to all of them -- which is the flicker. A partial snapshot is also
+    // not a reading: it is a reading in progress.
+    if (_expectedPorts == 0) _publishSwitch();
   }
 
   String _platform = '';
@@ -314,6 +342,23 @@ class KetiLinkService {
     final f = line.split(':');
     if (f.length < 3) return;
     _platform = f.sublist(2).join(':');
+  }
+
+  void _onTas(String line) {
+    // !TAS:<seq>:<port>:<ON|OFF>:<cycleNs>:<gateStates>
+    final f = line.split(':');
+    if (f.length < 6) return;
+    _state = _state.copyWith(tas: {
+      ..._state.tas,
+      f[2]: TasSnapshot(
+        port: f[2],
+        enabled: f[3] == 'ON',
+        cycleNs: int.tryParse(f[4]) ?? 0,
+        gateStates: int.tryParse(f[5]) ?? 0,
+        receivedAt: DateTime.now(),
+      ),
+    });
+    _emit();
   }
 
   void _onPort(String line) {
@@ -337,7 +382,7 @@ class KetiLinkService {
       inDiscards: at(11),
       outDiscards: at(12),
     ));
-    _publishSwitch();
+    if (_partialPorts.length >= _expectedPorts) _publishSwitch();
   }
 
   void _publishSwitch() {

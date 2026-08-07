@@ -66,6 +66,8 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   /// demonstrated, and a 12-port switch with per-port settings needs somewhere to put them
   /// that does not grow another window.
   String? _selectedPort;
+
+  void _selectPort(String? name) => setState(() => _selectedPort = name);
   bool _rightVisible = true;
 
   /// A scenario is just the fault state each path should end up in. Kept as data rather than
@@ -266,7 +268,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
                 rates: _rates,
                 history: _history,
                 selectedPort: _selectedPort,
-                onSelectPort: (name) => setState(() => _selectedPort = name),
+                onSelectPort: _selectPort,
               ),
             ),
           Positioned(
@@ -845,6 +847,7 @@ class _SwitchPanel extends ConsumerWidget {
           history: history[selected.name] ?? const [],
           protected: selected.name == snapshot.protectedPort,
           stale: !fresh,
+          tas: state.tas[selected.name],
           onBack: () => onSelectPort(null),
           onSetEnabled: (enabled) =>
               ref.read(ketiLinkServiceProvider).setPortEnabled(selected.name, enabled),
@@ -1099,6 +1102,7 @@ class _PortInspector extends StatelessWidget {
     required this.history,
     required this.protected,
     required this.stale,
+    required this.tas,
     required this.onBack,
     required this.onSetEnabled,
   });
@@ -1108,6 +1112,7 @@ class _PortInspector extends StatelessWidget {
   final List<double> history;
   final bool protected;
   final bool stale;
+  final TasSnapshot? tas;
   final VoidCallback onBack;
   final void Function(bool) onSetEnabled;
 
@@ -1185,11 +1190,32 @@ class _PortInspector extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 18),
+        const Text('Time-aware shaper', style: _kSectionTitle),
+        const SizedBox(height: 8),
+        if (tas == null)
+          const Text('Not reported for this port', style: _kMuted)
+        else ...[
+          _Stat('Gate control', tas!.enabled ? 'Enabled' : 'Disabled',
+              tas!.cycleNs == 0 ? 'no cycle set' : '${tas!.cycleNs / 1000} us cycle'),
+          _Stat('Gates open', _gateList(tas!.gateStates), ''),
+        ],
         const Spacer(),
-        const Text('Gate schedules and shaper settings land here next.', style: _kMuted),
       ],
     );
   }
+}
+
+/// oper-gate-states is a bitmask, one bit per traffic class. 255 means every gate is open,
+/// which is what a port with no schedule looks like -- worth saying in words rather than
+/// leaving the reader to decode 0xFF.
+String _gateList(int mask) {
+  if (mask == 255) return 'all (no schedule)';
+  final open = <String>[];
+  for (var tc = 0; tc < 8; ++tc) {
+    if ((mask >> tc) & 1 == 1) open.add('TC$tc');
+  }
+  return open.isEmpty ? 'none' : open.join(' ');
 }
 
 class _Stat extends StatelessWidget {

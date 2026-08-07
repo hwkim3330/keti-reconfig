@@ -37,9 +37,15 @@ static const KetiSidEntry kKetiSidTable[] = {
     {"ietf-system:system-state/platform/machine", 19025u},
     {"ietf-system:system-state/platform/os-version", 19028u},
     {"ietf-interfaces:interfaces/interface/enabled", 2036u},
+    {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table", 23101u},
+    {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/gate-enabled", 23125u},
+    {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/oper-gate-states", 23139u},
+    {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-cycle-time/numerator", 23114u},
+    {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-cycle-time/denominator", 23113u},
+    {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-control-list/gate-control-entry", 23106u},
 };
 
-static constexpr int kKetiSidCount = 18;
+static constexpr int kKetiSidCount = 24;
 
 inline uint32_t ketiSidFor(const char *path) {
   for (int i = 0; i < kKetiSidCount; ++i) {

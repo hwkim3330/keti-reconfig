@@ -144,6 +144,83 @@ int fetchSid(uint32_t sid, uint8_t *out, size_t capacity, uint8_t *codeOut, int 
 }
 
 
+// Fetches one keyed list entry: the payload is [[sid, key]] rather than the bare [sid] used
+// for a whole subtree. Used for per-port detail that is too big to carry in every snapshot --
+// the interface subtree is already 6.5 KB across thirteen ports, and a gate table each would
+// swamp it. The inspector asks for one port at a time instead.
+int fetchSidKeyed(uint32_t sid, const char *key, uint8_t *out, size_t capacity,
+                  uint8_t *codeOut, int *blockCount, bool sendBlock2 = true) {
+  constexpr uint8_t kSizeExponent = 4;
+  int total = 0;
+  uint32_t blockNumber = 0;
+  if (blockCount != nullptr) *blockCount = 0;
+
+  for (int guard = 0; guard < 128; ++guard) {
+    uint8_t packet[96];
+    size_t n = 0;
+    packet[n++] = 0x40;
+    packet[n++] = kCoapFetch;
+    const uint16_t id = messageId++;
+    packet[n++] = id >> 8;
+    packet[n++] = id & 0xFF;
+    packet[n++] = 0xB1;
+    packet[n++] = 'c';
+    packet[n++] = 0x11;
+    packet[n++] = uint8_t(kContentFormatYangIdentifiersCbor);
+    if (sendBlock2) n += encodeOption(packet + n, 11, (blockNumber << 4) | kSizeExponent);
+    packet[n++] = 0xFF;
+    n += cborUint(packet + n, 1, 4);          // array of one query
+    n += cborUint(packet + n, 2, 4);          // [sid, key]
+    n += cborUint(packet + n, sid, 0);
+    const size_t keyLength = strlen(key);
+    n += cborUint(packet + n, keyLength, 3);
+    memcpy(packet + n, key, keyLength);
+    n += keyLength;
+
+    if (blockNumber == 0) {
+      Serial.print("  keyed fetch request: ");
+      for (size_t i = 0; i < n; ++i) Serial.printf("%02X ", packet[i]);
+      Serial.println();
+    }
+    udp.beginPacket(kSwitch, kCoapPort);
+    udp.write(packet, n);
+    udp.endPacket();
+
+    bool answered = false;
+    const uint32_t deadline = millis() + 3000;
+    while (millis() < deadline && !answered) {
+      const int size = udp.parsePacket();
+      if (size <= 0) { delay(2); continue; }
+      static uint8_t buffer[1500];
+      const int got = udp.read(buffer, sizeof(buffer));
+      if (got < 4) continue;
+      if (uint16_t((buffer[2] << 8) | buffer[3]) != id) continue;
+      CoapResponse response;
+      if (!parseCoapResponse(buffer, got, &response)) continue;
+      *codeOut = response.code;
+      if ((response.code >> 5) != 2) {
+        Serial.print("  reply: ");
+        for (int i = 0; i < got && i < 24; ++i) Serial.printf("%02X ", buffer[i]);
+        Serial.println();
+        return total;
+      }
+      if (response.payloadLength > 0) {
+        const int room = int(capacity) - total;
+        const int copied = min(response.payloadLength, room);
+        memcpy(out + total, response.payload, copied);
+        total += copied;
+        if (copied < response.payloadLength) return total;
+      }
+      if (blockCount != nullptr) ++*blockCount;
+      answered = true;
+      if (!response.hasBlock2 || !response.moreBlocks) return total;
+      blockNumber = response.blockNumber + 1;
+    }
+    if (!answered) return total > 0 ? total : -1;
+  }
+  return total;
+}
+
 // Writes one leaf of one list entry: iPATCH with a payload of {[leafSid, key]: value}.
 //
 // The shape came from the device, not from a guess. The first attempt addressed the list entry
