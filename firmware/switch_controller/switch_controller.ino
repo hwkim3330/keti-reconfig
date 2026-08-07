@@ -22,10 +22,32 @@
 
 constexpr int kSck = 48, kMosi = 21, kCs = 45, kMiso = 47;
 
-const IPAddress kSelf(192, 168, 1, 20);
-const IPAddress kSwitch(192, 168, 1, 12);
+// One firmware for every controller. Which switch a board serves, where that switch lives and
+// which port the board is plugged into all come from the board's own MAC, so adding the second
+// and third controllers is a line each rather than a separate build to keep in step.
+struct ControllerConfig {
+  uint64_t mac;          // as printed on the board, not as getEfuseMac returns it
+  int switchIndex;       // becomes KETI-SWITCH<n>
+  uint8_t selfAddress;   // last octet of this controller's own address
+  uint8_t switchAddress; // last octet of its switch's management address
+  const char *uplinkPort;  // the port this controller reaches the switch through
+};
+static const ControllerConfig kControllers[] = {
+    {0x288485809BD0ULL, 1, 20, 12, "12"},
+    // {0x............ULL, 2, 21, 22, "12"},
+    // {0x............ULL, 3, 22, 32, "12"},
+};
+
 const IPAddress kMask(255, 255, 255, 0);
 const IPAddress kGateway(192, 168, 1, 1);
+
+// Filled in from the table at startup. An unrecognised board gets no addresses at all rather
+// than borrowing switch 1's -- two controllers answering for the same switch would be worse
+// than one that plainly does not work.
+IPAddress kSelf(0, 0, 0, 0);
+IPAddress kSwitch(0, 0, 0, 0);
+const char *kProtectedPort = "";
+int switchIndex = 0;
 const uint16_t kCoapPort = 5683;
 
 NetworkUDP udp;
@@ -83,13 +105,10 @@ uint32_t sequenceNumber = 0;
 
 // Set by the BLE callback, acted on in loop(). Writing from the callback would put a blocking
 // network round trip inside the Bluedroid task, which is the shape that wedged the last rig.
-// The port this controller reaches the switch through. Disabling it would cut the only path
-// back, and nothing here could undo that -- recovery would need the serial console. Stated as
-// a constant rather than detected: the controller cannot see which port its own frames arrive
-// on without walking the bridge FDB, and a guard that guesses is worse than one that is
-// written down. It is published in every snapshot so the console does not keep its own copy
-// to fall out of step -- on the LAN9662 bench rig this was port 1, on the LAN9692 it is 12.
-static const char *kProtectedPort = "12";
+// The uplink port is declared in the controller table above rather than detected: a board
+// cannot see which port its own frames arrive on without walking the bridge FDB, and a guard
+// that guesses is worse than one written down. It is published in every snapshot so the
+// console keeps no second copy to fall out of step with.
 
 struct GateWindowSpec { uint8_t mask; uint32_t intervalNs; };
 
@@ -231,13 +250,37 @@ class ServerCallbacks final : public BLEServerCallbacks {
   }
 };
 
+char bleName[24] = "KETI-SWITCH-UNKNOWN";
+
 void setup() {
   Serial.begin(115200);
   delay(1500);
   Serial.println("\n=== KETI switch controller ===");
+
+  // Identity first: everything below depends on which switch this board serves.
+  uint64_t printedMac = 0;
+  {
+    const uint64_t mac = ESP.getEfuseMac();
+    for (int i = 0; i < 6; ++i) printedMac = (printedMac << 8) | ((mac >> (8 * i)) & 0xFF);
+  }
+  for (const auto &c : kControllers) {
+    if (c.mac != printedMac) continue;
+    switchIndex = c.switchIndex;
+    kSelf = IPAddress(192, 168, 1, c.selfAddress);
+    kSwitch = IPAddress(192, 168, 1, c.switchAddress);
+    kProtectedPort = c.uplinkPort;
+    snprintf(bleName, sizeof(bleName), "KETI-SWITCH%d", switchIndex);
+  }
+  Serial.printf("identity: %s (mac %012llX)\n", bleName, printedMac);
+  if (switchIndex == 0) {
+    // Advertise anyway so the board is findable and obviously wrong, but do not touch the
+    // network: a board with no entry has no business claiming an address.
+    Serial.println("this board is not in the controller table -- add its MAC to serve a switch");
+  }
   Serial.printf("SID table built from catalog %s (%d entries)\n", KETI_SID_CATALOG_CHECKSUM,
                 kKetiSidCount);
 
+  if (switchIndex == 0) return;
   if (!ETH.begin(ETH_PHY_W5500, 1, kCs, -1, -1, SPI2_HOST, kSck, kMiso, kMosi)) {
     Serial.println("ETH.begin failed");
     return;
@@ -248,29 +291,6 @@ void setup() {
                 ETH.localIP().toString().c_str());
   udp.begin(kCoapPort + 1);
 
-  // One controller per switch is where this is going -- the RECON topology is three ZCUs, each
-  // with its own LAN9692. Identity comes from the chip rather than a build flag, the same way
-  // the path modules do it, so flashing the wrong board cannot silently produce two switch 1s.
-  uint64_t printedMac = 0;
-  {
-    const uint64_t mac = ESP.getEfuseMac();
-    for (int i = 0; i < 6; ++i) printedMac = (printedMac << 8) | ((mac >> (8 * i)) & 0xFF);
-  }
-  int switchIndex = 0;
-  struct KnownController { uint64_t mac; int index; };
-  static const KnownController kControllers[] = {
-      {0x288485809BD0ULL, 1},
-  };
-  for (const auto &c : kControllers) {
-    if (c.mac == printedMac) switchIndex = c.index;
-  }
-  char bleName[24];
-  if (switchIndex == 0) {
-    snprintf(bleName, sizeof(bleName), "KETI-SWITCH-UNKNOWN");
-  } else {
-    snprintf(bleName, sizeof(bleName), "KETI-SWITCH%d", switchIndex);
-  }
-  Serial.printf("identity: %s (mac %012llX)\n", bleName, printedMac);
   BLEDevice::init(bleName);
   BLEServer *server = BLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());

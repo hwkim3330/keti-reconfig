@@ -17,7 +17,9 @@ constexpr uint16_t kContentFormatYangDataCborSid = 140;
 // Owned here because the fetch helpers below are the only users.
 extern NetworkUDP udp;
 extern uint16_t messageId;
-extern const IPAddress kSwitch;
+// Not const: the switch address comes from the controller table at startup, keyed on the
+// board's MAC, so one firmware serves every controller.
+extern IPAddress kSwitch;
 extern const uint16_t kCoapPort;
 
 size_t cborUint(uint8_t *out, uint32_t value, uint8_t majorType) {
