@@ -381,6 +381,13 @@ class KetiLinkService {
     }
   }
 
+  /// Asks the controller to enable or disable a switch port. The console deliberately does not
+  /// know any SIDs: the controller owns the generated table and is the only thing that checked
+  /// the device's catalog, so it is the only thing entitled to write.
+  Future<bool> setPortEnabled(String port, bool enabled) {
+    return sendPath(KetiDevice.switchController, '!PORT:$port:${enabled ? 'UP' : 'DOWN'}');
+  }
+
   Future<bool> setPathFault(int path, bool faulted) {
     final which = path == 1 ? KetiDevice.path1 : KetiDevice.path2;
     return sendPath(which, faulted ? '!SET:FAULT' : '!SET:NORMAL');

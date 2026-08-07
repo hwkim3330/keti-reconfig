@@ -39,6 +39,27 @@ const String modelViewerScript = '''
                 color: #1d4ed8;
                 background: rgba(239,246,255,0.96);
             }
+            /* Path labels carry the same colour as the module's own LED -- path 1 green,
+               path 2 blue, red when the path is cut. Binding the two means what is seen on
+               the bench and what is seen on screen are the same signal, with no legend to
+               learn. Deliberately not an emoji: those render differently everywhere and say
+               less than the colour already does. */
+            .path1-hotspot {
+                border-color: #0f766e;
+                color: #115e59;
+                background: rgba(240,253,250,0.97);
+            }
+            .path2-hotspot {
+                border-color: #1d4ed8;
+                color: #1e40af;
+                background: rgba(239,246,255,0.97);
+            }
+            .path-faulted {
+                border-color: #dc2626 !important;
+                color: #b91c1c !important;
+                background: rgba(254,242,242,0.98) !important;
+                box-shadow: 0 5px 16px rgba(220,38,38,0.3) !important;
+            }
             .injector-hotspot {
                 min-width: 78px;
                 border-radius: 4px;
@@ -51,12 +72,21 @@ const String modelViewerScript = '''
         document.head.appendChild(style);
 
         /* Label Hotspot 동적 생성 */
+        window.setPathLabelFault = (path, faulted) => {
+            const slot = path === 1 ? 'inlineEspAR' : 'inlineEspBR';
+            const node = viewer.querySelector('[slot="hotspot-' + slot + '"]');
+            if (!node) return;
+            node.classList.toggle('path-faulted', !!faulted);
+        };
+
         window.createLabelHotspots = (hotspotsJson) => {
             const hotspots = JSON.parse(hotspotsJson);
             viewer.querySelectorAll('.label-hotspot').forEach((node) => node.remove());
             hotspots.forEach(h => {
                 const switchClass = h.slotName.includes('Switch') ? ' switch-hotspot' : '';
-                const injectorClass = h.slotName.includes('inlineEsp') ? ' injector-hotspot' : '';
+                let injectorClass = h.slotName.includes('inlineEsp') ? ' injector-hotspot' : '';
+                if (h.slotName === 'inlineEspAR') injectorClass = ' path1-hotspot';
+                if (h.slotName === 'inlineEspBR') injectorClass = ' path2-hotspot';
                 const hotspotHTML = \`
                     <button class="label-hotspot\${switchClass}\${injectorClass}"
                             slot="hotspot-\${h.slotName}"

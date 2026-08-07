@@ -58,14 +58,14 @@ const List<LabelHotspotConfig> labelHotspots = [
   LabelHotspotConfig(
     slotName: 'inlineEspAR',
     label: 'Path 1\nfault injection',
-    position: '1.25m 9.6m 5m',
+    position: '1.9m 9.9m 5m',
     dataTarget: '1.25m 5.6m 5m',
     dataOrbit: '135deg 45deg 2.5m',
   ),
   LabelHotspotConfig(
     slotName: 'inlineEspBR',
     label: 'Path 2\nfault injection',
-    position: '-1.25m 6.4m 5m',
+    position: '-1.9m 6.1m 5m',
     dataTarget: '-1.25m 5.6m 5m',
     dataOrbit: '135deg 45deg 2.5m',
   ),

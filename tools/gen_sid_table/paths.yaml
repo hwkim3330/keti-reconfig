@@ -39,3 +39,7 @@
 # would be wrong on one of them without anyone noticing.
 - "/ietf-system:system-state/platform/machine"
 - "/ietf-system:system-state/platform/os-version"
+
+# Writable: the first configuration this console changes. A boolean is the simplest possible
+# value to encode, and its effect shows up in the port list we already display.
+- "/ietf-interfaces:interfaces/interface/enabled"

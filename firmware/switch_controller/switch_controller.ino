@@ -81,6 +81,12 @@ BLECharacteristic *stateCharacteristic = nullptr;
 bool tabletConnected = false;
 uint32_t sequenceNumber = 0;
 
+// Set by the BLE callback, acted on in loop(). Writing from the callback would put a blocking
+// network round trip inside the Bluedroid task, which is the shape that wedged the last rig.
+volatile bool pendingPortWrite = false;
+bool pendingPortEnable = false;
+String pendingPort;
+
 void notifyLine(const char *line) {
   if (stateCharacteristic == nullptr || !tabletConnected) return;
   stateCharacteristic->setValue((uint8_t *)line, strlen(line));
@@ -114,6 +120,30 @@ void publishSnapshot(const PortTable &table, bool linkUp) {
   }
 }
 
+// Commands from the tablet. Kept to a shape the console can form without knowing any SIDs --
+// the controller owns the SID table, and it is the only thing that checked the catalog.
+class ControlCallbacks final : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *characteristic) override {
+    String command = characteristic->getValue();
+    command.trim();
+    // !PORT:<name>:<UP|DOWN>
+    if (!command.startsWith("!PORT:")) return;
+    const int separator = command.indexOf(':', 6);
+    if (separator < 0) return;
+    const String name = command.substring(6, separator);
+    const bool enable = command.substring(separator + 1) == "UP";
+    // Refuse rather than write against a catalog the SID table was not built for: the SIDs
+    // would land on different nodes and the switch would accept a change nobody asked for.
+    if (!catalogMatches) {
+      notifyLine("!ACK:PORT:REFUSED:catalog mismatch");
+      return;
+    }
+    pendingPort = name;
+    pendingPortEnable = enable;
+    pendingPortWrite = true;
+  }
+};
+
 class ServerCallbacks final : public BLEServerCallbacks {
   void onConnect(BLEServer *) override { tabletConnected = true; }
   void onDisconnect(BLEServer *server) override {
@@ -144,8 +174,11 @@ void setup() {
   server->setCallbacks(new ServerCallbacks());
   BLEService *service = server->createService(kServiceUuid);
   stateCharacteristic = service->createCharacteristic(
-      kStateUuid, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+      kStateUuid, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_WRITE_NR);
   stateCharacteristic->addDescriptor(new BLE2902());
+  stateCharacteristic->setCallbacks(new ControlCallbacks());
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(kServiceUuid);
@@ -198,6 +231,22 @@ void loop() {
         Serial.println("  machine string not found");
       }
     }
+  }
+
+  if (pendingPortWrite) {
+    pendingPortWrite = false;
+    uint8_t patchCode = 0;
+    const bool ok =
+        patchListLeafBool(pendingPort.c_str(),
+                          ketiSidFor("ietf-interfaces:interfaces/interface/enabled"),
+                          pendingPortEnable, &patchCode, true);
+    Serial.printf("iPATCH port %s -> %s: code %d.%02d (%s)\n", pendingPort.c_str(),
+                  pendingPortEnable ? "UP" : "DOWN", patchCode >> 5, patchCode & 0x1F,
+                  ok ? "accepted" : "rejected");
+    char ack[96];
+    snprintf(ack, sizeof(ack), "!ACK:PORT:%s:%s:%d.%02d", pendingPort.c_str(),
+             ok ? "OK" : "FAIL", patchCode >> 5, patchCode & 0x1F);
+    notifyLine(ack);
   }
 
   // The interface subtree is the dashboard's actual source of data, and it is far too large

@@ -111,9 +111,11 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
         _shownFaults.add(path);
         final config = errorHotspotConfigs[key];
         if (config != null) service.showFaultAlert(key, 2, config);
+        service.setPathLabelFault(path, true);
       } else if (!faulted && _shownFaults.contains(path)) {
         _shownFaults.remove(path);
         service.hideFaultAlert(key);
+        service.setPathLabelFault(path, false);
       }
     }
   }
@@ -580,14 +582,14 @@ class _PathStatusLine extends StatelessWidget {
   }
 }
 
-class _SwitchPanel extends StatelessWidget {
+class _SwitchPanel extends ConsumerWidget {
   const _SwitchPanel({required this.state, required this.rates});
 
   final KetiState state;
   final Map<String, double> rates;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = state.switchSnapshot;
     final connected = state.connected.contains(KetiDevice.switchController);
     final fresh = _fresh(snapshot?.receivedAt);
@@ -627,6 +629,9 @@ class _SwitchPanel extends StatelessWidget {
                   port: snapshot.ports[i],
                   kbps: rates[snapshot.ports[i].name],
                   stale: !fresh,
+                  onSetEnabled: (enabled) => ref
+                      .read(ketiLinkServiceProvider)
+                      .setPortEnabled(snapshot.ports[i].name, enabled),
                 ),
               ),
             )
@@ -657,11 +662,17 @@ class _Note extends StatelessWidget {
 }
 
 class _PortRow extends StatelessWidget {
-  const _PortRow({required this.port, required this.kbps, required this.stale});
+  const _PortRow({
+    required this.port,
+    required this.kbps,
+    required this.stale,
+    required this.onSetEnabled,
+  });
 
   final SwitchPort port;
   final double? kbps;
   final bool stale;
+  final void Function(bool enabled) onSetEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -693,6 +704,26 @@ class _PortRow extends StatelessWidget {
                 kbps == null ? '--' : '${kbps!.toStringAsFixed(1)} kbps',
                 style: const TextStyle(
                     fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF44506A)),
+              ),
+              const SizedBox(width: 8),
+              // A real configuration write: the controller turns this into a CORECONF iPATCH.
+              // Shown as an action rather than a state, because what the port is doing is the
+              // oper-status above it -- this button only says what was asked for.
+              GestureDetector(
+                onTap: stale ? null : () => onSetEnabled(!port.up),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: const Color(0xFFE3E8EF)),
+                  ),
+                  child: Text(port.up ? 'disable' : 'enable',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: stale ? const Color(0xFFB9C1CE) : const Color(0xFF44506A))),
+                ),
               ),
             ],
           ),

@@ -28,6 +28,11 @@ class ViewerService {
     await _controller?.runJavaScript('window.toggleMaterials?.()');
   }
 
+  /// Colours the path label to match the module's LED: normal in its own colour, red when cut.
+  Future<void> setPathLabelFault(int path, bool faulted) async {
+    await _controller?.runJavaScript('window.setPathLabelFault?.($path, $faulted)');
+  }
+
   Future<void> setVehicleShellOpacity(double opacity) async {
     final value = opacity.clamp(0.0, 1.0).toStringAsFixed(3);
     await _controller?.runJavaScript('window.setVehicleShellOpacity?.($value)');

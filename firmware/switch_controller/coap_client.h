@@ -9,7 +9,10 @@
 #include <NetworkUdp.h>
 
 constexpr uint8_t kCoapFetch = 0x05;
+constexpr uint8_t kCoapIpatch = 0x07;
 constexpr uint16_t kContentFormatYangIdentifiersCbor = 141;
+constexpr uint16_t kContentFormatYangInstancesCbor = 142;
+constexpr uint16_t kContentFormatYangDataCborSid = 140;
 
 // Owned here because the fetch helpers below are the only users.
 extern NetworkUDP udp;
@@ -140,3 +143,65 @@ int fetchSid(uint32_t sid, uint8_t *out, size_t capacity, uint8_t *codeOut, int 
   return total;
 }
 
+
+// Writes one leaf of one list entry: iPATCH with a payload of {[leafSid, key]: value}.
+//
+// The shape came from the device, not from a guess. The first attempt addressed the list entry
+// and nested the leaf inside it -- {[2033,"2"]: {3: false}} -- which the switch answered with
+// "List keys not allowed", error-data-node 2033. Over Ethernet that same request simply got no
+// reply at all, which is why it had to be reproduced over the serial link where the CLI could
+// print the error. The accepted form names the leaf directly and carries the value inline:
+//   A1 82 19 07F4 61 32 F5   =  {[2036 "enabled", "2"]: true}
+bool patchListLeafBool(const char *key, uint32_t leafSid, bool value, uint8_t *codeOut,
+                       bool sendAccept) {
+  uint8_t packet[96];
+  size_t n = 0;
+  packet[n++] = 0x40;
+  packet[n++] = kCoapIpatch;
+  const uint16_t id = messageId++;
+  packet[n++] = id >> 8;
+  packet[n++] = id & 0xFF;
+
+  packet[n++] = 0xB1;                                        // Uri-Path (11)
+  packet[n++] = 'c';
+  packet[n++] = 0x11;                                        // Content-Format (12), delta 1
+  packet[n++] = uint8_t(kContentFormatYangInstancesCbor);
+  if (sendAccept) {
+    packet[n++] = 0x51;                                      // Accept (17), delta 5
+    packet[n++] = uint8_t(kContentFormatYangDataCborSid);
+  }
+
+  packet[n++] = 0xFF;
+  n += cborUint(packet + n, 1, 5);                           // map(1)
+  n += cborUint(packet + n, 2, 4);                           // key: array(2) = [leaf SID, key]
+  n += cborUint(packet + n, leafSid, 0);
+  const size_t keyLength = strlen(key);
+  n += cborUint(packet + n, keyLength, 3);                   // text(keyLength)
+  memcpy(packet + n, key, keyLength);
+  n += keyLength;
+  packet[n++] = value ? 0xF5 : 0xF4;                         // the value, not a nested map
+
+  udp.beginPacket(kSwitch, kCoapPort);
+  udp.write(packet, n);
+  udp.endPacket();
+
+  const uint32_t deadline = millis() + 3000;
+  while (millis() < deadline) {
+    const int size = udp.parsePacket();
+    if (size <= 0) { delay(2); continue; }
+    uint8_t buffer[512];
+    const int got = udp.read(buffer, sizeof(buffer));
+    if (got < 4) continue;
+    if (uint16_t((buffer[2] << 8) | buffer[3]) != id) continue;
+    *codeOut = buffer[1];
+    // Type lives in bits 5-4 of the first byte: 0 CON, 1 NON, 2 ACK, 3 RST. A reset with code
+    // 0.00 means the message was rejected at the protocol level rather than by the datastore,
+    // which points at the options rather than at the payload.
+    Serial.printf("  iPATCH reply: hdr 0x%02X (type %d), code %d.%02d, %d bytes\n", buffer[0],
+                  (buffer[0] >> 4) & 0x03, buffer[1] >> 5, buffer[1] & 0x1F, got);
+    for (int i = 0; i < got && i < 24; ++i) Serial.printf("%02X ", buffer[i]);
+    Serial.println();
+    return (buffer[1] >> 5) == 2;                            // 2.xx is success
+  }
+  return false;
+}
