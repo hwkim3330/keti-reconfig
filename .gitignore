@@ -1,3 +1,6 @@
 build/
 node_modules/
 *.apk
+.dart_tool/
+.gradle/
+*.iml
