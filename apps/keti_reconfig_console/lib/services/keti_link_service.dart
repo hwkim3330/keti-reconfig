@@ -318,6 +318,11 @@ class KetiLinkService {
 
       _state = _state.copyWith(connected: {..._state.connected, which});
       _emit();
+      // Nothing left to look for, so stop listening. The window is 25 s and without this the
+      // console says it is scanning for up to that long after everything has been found.
+      if (KetiDevice.values.every(_devices.containsKey)) {
+        await FlutterBluePlus.stopScan();
+      }
       if (!which.isSwitch) await sendPath(which, '!SYNC');
     } catch (_) {
       try {

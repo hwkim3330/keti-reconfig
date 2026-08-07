@@ -78,6 +78,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   /// Which switch the inspector is showing. With one switch this never changes and the console
   /// shows no selector for it -- a single-switch rig should not be made to navigate.
   KetiDevice? _activeSwitch;
+  bool _showQuietPorts = false;
 
   /// A scenario is just the fault state each path should end up in. Kept as data rather than
   /// as a sequence of taps so the console can say what it asked for and, separately, what the
@@ -287,7 +288,9 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               ),
             ),
           if (_rightVisible)
-            Positioned(
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
               right: 14,
               top: 76,
               bottom: 14,
@@ -306,6 +309,8 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
                 onSelectPort: _selectPort,
                 wide: _rightWide,
                 onToggleWide: () => setState(() => _rightWide = !_rightWide),
+                showQuiet: _showQuietPorts,
+                onToggleQuiet: () => setState(() => _showQuietPorts = !_showQuietPorts),
               ),
             ),
           Positioned(
@@ -877,6 +882,8 @@ class _SwitchPanel extends ConsumerWidget {
     required this.onSelectPort,
     required this.wide,
     required this.onToggleWide,
+    required this.showQuiet,
+    required this.onToggleQuiet,
   });
 
   final KetiState state;
@@ -889,6 +896,8 @@ class _SwitchPanel extends ConsumerWidget {
   final void Function(String?) onSelectPort;
   final bool wide;
   final VoidCallback onToggleWide;
+  final bool showQuiet;
+  final VoidCallback onToggleQuiet;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -899,9 +908,14 @@ class _SwitchPanel extends ConsumerWidget {
     final selected = selectedPort == null
         ? null
         : snapshot?.ports.where((p) => p.name == selectedPort).firstOrNull;
+    // Cross-faded rather than swapped: the inspector and the port list occupy the same place,
+    // and an instant switch reads as a redraw rather than as going somewhere.
     if (selected != null && snapshot != null) {
       return _Glass(
-        child: _PortInspector(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: _PortInspector(
+          key: ValueKey(selected.name),
           wide: wide,
           onToggleWide: onToggleWide,
           port: selected,
@@ -918,6 +932,7 @@ class _SwitchPanel extends ConsumerWidget {
           onSetEnabled: (enabled) => ref
               .read(ketiLinkServiceProvider)
               .setPortEnabled(active, selected.name, enabled),
+          ),
         ),
       );
     }
@@ -1003,23 +1018,63 @@ class _SwitchPanel extends ConsumerWidget {
           const SizedBox(height: 10),
           if (snapshot != null && snapshot.catalogOk)
             Expanded(
-              child: ListView.separated(
+              child: Builder(builder: (context) {
+                // Ports with no link and no history are folded into one line. On a twelve-port
+                // switch with one thing plugged in, eleven rows saying "no link" push the port
+                // that is actually carrying traffic off the screen.
+                final quiet = snapshot.ports
+                    .where((p) => !p.up && (history[p.name] ?? const []).every((v) => v == 0))
+                    .toList();
+                final active =
+                    snapshot.ports.where((p) => !quiet.contains(p)).toList();
+                final shown = showQuiet ? snapshot.ports : active;
+                return ListView.separated(
                 padding: EdgeInsets.zero,
-                itemCount: snapshot.ports.length,
+                itemCount: shown.length + (quiet.isEmpty ? 0 : 1),
                 separatorBuilder: (_, __) =>
                     const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F6)),
-                itemBuilder: (_, i) => _PortRow(
-                  port: snapshot.ports[i],
-                  kbps: rates[snapshot.ports[i].name],
-                  history: history[snapshot.ports[i].name] ?? const [],
+                itemBuilder: (_, i) {
+                  if (i == shown.length) {
+                    return GestureDetector(
+                      onTap: onToggleQuiet,
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        child: Row(
+                          children: [
+                            Text(
+                              showQuiet
+                                  ? 'Hide the ${quiet.length} ports with no link'
+                                  : '${quiet.length} more ports, no link',
+                              style: _kMuted,
+                            ),
+                            const Spacer(),
+                            Icon(
+                              showQuiet
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: const Color(0xFF9AA3B2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return _PortRow(
+                  port: shown[i],
+                  kbps: rates[shown[i].name],
+                  history: history[shown[i].name] ?? const [],
                   stale: !fresh,
-                  protected: snapshot.ports[i].name == snapshot.protectedPort,
-                  onOpen: () => onSelectPort(snapshot.ports[i].name),
+                  protected: shown[i].name == snapshot.protectedPort,
+                  onOpen: () => onSelectPort(shown[i].name),
                   onSetEnabled: (enabled) => ref
                       .read(ketiLinkServiceProvider)
-                      .setPortEnabled(active, snapshot.ports[i].name, enabled),
-                ),
-              ),
+                      .setPortEnabled(this.active, shown[i].name, enabled),
+                );
+                },
+              );
+              }),
             )
           else
             const Spacer(),
@@ -1219,6 +1274,7 @@ class _PortRow extends StatelessWidget {
 /// dialog stacked over the live view.
 class _PortInspector extends StatelessWidget {
   const _PortInspector({
+    super.key,
     required this.wide,
     required this.onToggleWide,
     required this.port,
