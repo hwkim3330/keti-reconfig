@@ -183,7 +183,19 @@ class ControlCallbacks final : public BLECharacteristicCallbacks {
         notifyLine("!ACK:SCHED:REFUSED:catalog mismatch");
         return;
       }
-      pendingSchedulePort = command.substring(7, separator);
+      const String port = command.substring(7, separator);
+      // Same reasoning as refusing to disable this port, and the gap the last commit left
+      // open: a schedule that closes the gates the management traffic uses would starve the
+      // link this controller depends on, and it could not undo that. Scheduling the uplink is
+      // refused outright rather than inspected -- deciding which schedules are survivable is
+      // a judgement the demo does not need to make.
+      if (port == kProtectedPort) {
+        notifyLine("!ACK:SCHED:REFUSED:that is the controller's own uplink");
+        Serial.printf("refused: schedule on port %s would gate this controller's link\n",
+                      port.c_str());
+        return;
+      }
+      pendingSchedulePort = port;
       pendingScheduleId = command.substring(separator + 1);
       pendingScheduleWrite = true;
       return;

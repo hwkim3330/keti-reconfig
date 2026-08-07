@@ -83,13 +83,20 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   /// as a sequence of taps so the console can say what it asked for and, separately, what the
   /// modules reported back.
   static const _scenarios = <_Scenario>[
-    _Scenario('normal', 'All paths normal', 'Baseline', {1: false, 2: false}),
-    _Scenario('path1', 'Path 1 link down', 'Single path fault', {1: true, 2: false}),
-    _Scenario('path2', 'Path 2 link down', 'Single path fault', {1: false, 2: true}),
-    _Scenario('both', 'Both paths down', 'Compound fault', {1: true, 2: true}),
-    // A switch-side link failure, which is a different layer from a relay cut on a path
-    // module. The switch dying outright is deliberately not a scenario: the console would
-    // lose the data it reports with, so that is a state to display well, not a button.
+    // The RECON modes, as far as one switch can show them. Each is a fault and the schedule
+    // that answers it: the point of the project is that a link going down changes the gate
+    // schedules, and a scenario that only flips a relay tells half the story.
+    _Scenario('normal', 'Mode 0 - normal', 'All paths up', {1: false, 2: false},
+        schedule: 'tc7', schedulePort: '1'),
+    _Scenario('path1', 'Mode 1 - path 1 down', 'Reroute, tighter gates', {1: true, 2: false},
+        schedule: 'strict', schedulePort: '1'),
+    _Scenario('path2', 'Mode 2 - path 2 down', 'Reroute, fast cycle', {1: false, 2: true},
+        schedule: 'fast', schedulePort: '1'),
+    _Scenario('both', 'Mode 3 - both down', 'No reroute left', {1: true, 2: true},
+        schedule: 'off', schedulePort: '1'),
+    // A switch-side link failure, a different layer from a relay cut on a path module. The
+    // switch dying outright is deliberately not a scenario: the console would lose the data it
+    // reports with, so that is a state to display well, not a button.
     _Scenario('switchPort', 'Switch port 1 down', 'Switch-side link', {},
         switchPort: false, switchPortName: '1'),
     _Scenario('switchPortUp', 'Switch port 1 up', 'Switch-side link', {},
@@ -103,9 +110,12 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
     for (final entry in scenario.faults.entries) {
       await service.setPathFault(entry.key, entry.value);
     }
+    final target = _activeSwitch ?? KetiDevice.switch1;
     if (scenario.switchPort != null) {
-      final target = _activeSwitch ?? KetiDevice.switch1;
       await service.setPortEnabled(target, scenario.switchPortName, scenario.switchPort!);
+    }
+    if (scenario.schedule != null) {
+      await service.setSchedule(target, scenario.schedulePort, scenario.schedule!);
     }
   }
 
@@ -564,7 +574,7 @@ class _Event {
 
 class _Scenario {
   const _Scenario(this.id, this.title, this.subtitle, this.faults,
-      {this.switchPort, this.switchPortName = '1'});
+      {this.switchPort, this.switchPortName = '1', this.schedule, this.schedulePort = '1'});
 
   final String id;
   final String title;
@@ -575,6 +585,11 @@ class _Scenario {
   /// controller's uplink, which the firmware refuses anyway.
   final bool? switchPort;
   final String switchPortName;
+
+  /// The gate schedule this mode puts on the switch, if any. Named rather than spelled out:
+  /// the controller owns the entries.
+  final String? schedule;
+  final String schedulePort;
 }
 
 class _ScenarioRail extends ConsumerWidget {
