@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define KETI_SID_CATALOG_CHECKSUM "5151bae07677b1501f9cf52637f2a38f"
+#define KETI_SID_CATALOG_CHECKSUM "440057a11e66eed82bc8e838347f694c"
 
 // The one SID that cannot be generated, because it is what you ask for before you
 // know which catalog you are talking to.

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +43,29 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   final _shownFaults = <int>{};
 
   String _scenario = 'normal';
+
+  /// A short rolling history per port, for the sparklines. Kept here rather than in the
+  /// service because it is a view concern: the service reports what is true now.
+  final _history = <String, List<double>>{};
+  static const _historyLength = 40;
+
+  /// What happened, and when. A demo is a sequence of events and the console was showing only
+  /// the latest state -- which cannot answer "did that fault actually apply, and when".
+  final _events = <_Event>[];
+  final _lastPathFault = <int, bool>{};
+  bool? _lastSwitchLive;
+
+  void _log(String text, {bool warn = false}) {
+    _events.insert(0, _Event(text, DateTime.now(), warn));
+    if (_events.length > 40) _events.removeLast();
+  }
   bool _leftVisible = true;
+
+  /// The right panel is an inspector: it shows the switch, or one port of it. Depth is a push
+  /// and a back, not a popup -- a modal over a live console hides the very state being
+  /// demonstrated, and a 12-port switch with per-port settings needs somewhere to put them
+  /// that does not grow another window.
+  String? _selectedPort;
   bool _rightVisible = true;
 
   /// A scenario is just the fault state each path should end up in. Kept as data rather than
@@ -55,13 +76,24 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
     _Scenario('path1', 'Path 1 link down', 'Single path fault', {1: true, 2: false}),
     _Scenario('path2', 'Path 2 link down', 'Single path fault', {1: false, 2: true}),
     _Scenario('both', 'Both paths down', 'Compound fault', {1: true, 2: true}),
+    // A switch-side link failure, which is a different layer from a relay cut on a path
+    // module. The switch dying outright is deliberately not a scenario: the console would
+    // lose the data it reports with, so that is a state to display well, not a button.
+    _Scenario('switchPort', 'Switch port 1 down', 'Switch-side link', {},
+        switchPort: false, switchPortName: '1'),
+    _Scenario('switchPortUp', 'Switch port 1 up', 'Switch-side link', {},
+        switchPort: true, switchPortName: '1'),
   ];
 
   Future<void> _runScenario(_Scenario scenario) async {
     setState(() => _scenario = scenario.id);
     final service = ref.read(ketiLinkServiceProvider);
+    _log('Sequence: ${scenario.title}');
     for (final entry in scenario.faults.entries) {
       await service.setPathFault(entry.key, entry.value);
+    }
+    if (scenario.switchPort != null) {
+      await service.setPortEnabled(scenario.switchPortName, scenario.switchPort!);
     }
   }
 
@@ -93,6 +125,31 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
     await service.setVehicleShellOpacity(_shellOpacity);
     await service.initializeLabelHotspots();
     await service.toggleHotspots(_labelsVisible);
+  }
+
+  /// Watches for the transitions worth recording. Derived from reported state rather than
+  /// from the commands sent, so the log says what happened and not what was asked for.
+  void _recordEvents(KetiState state) {
+    for (final path in [1, 2]) {
+      final snapshot = state.pathSnapshots[path];
+      if (snapshot == null) continue;
+      final was = _lastPathFault[path];
+      if (was != snapshot.faulted) {
+        _lastPathFault[path] = snapshot.faulted;
+        if (was != null) {
+          _log('Path $path ${snapshot.faulted ? "cut" : "restored"}',
+              warn: snapshot.faulted);
+        }
+      }
+    }
+    final live = state.connected.contains(KetiDevice.switchController) &&
+        _fresh(state.switchSnapshot?.receivedAt);
+    if (_lastSwitchLive != live) {
+      if (_lastSwitchLive != null) {
+        _log(live ? 'Switch link restored' : 'Switch link lost', warn: !live);
+      }
+      _lastSwitchLive = live;
+    }
   }
 
   /// Mirrors the two path modules onto the model: the route a fault sits on flashes, and
@@ -134,7 +191,13 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
           final delta = (port.inOctets + port.outOctets) -
               (before.inOctets + before.outOctets);
           // Counters reset when the switch reboots; a negative delta is not a rate.
-          if (delta >= 0) _rates[port.name] = delta * 8 / seconds / 1000.0;
+          if (delta >= 0) {
+            final rate = delta * 8 / seconds / 1000.0;
+            _rates[port.name] = rate;
+            final series = _history.putIfAbsent(port.name, () => <double>[]);
+            series.add(rate);
+            if (series.length > _historyLength) series.removeAt(0);
+          }
         }
       }
     }
@@ -148,6 +211,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
     final async = ref.watch(ketiStateProvider);
     final state = async.valueOrNull ?? const KetiState();
     _updateRates(state.switchSnapshot);
+    _recordEvents(state);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncModelFaults(state);
     });
@@ -188,6 +252,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
                 state: state,
                 selected: _scenario,
                 onSelect: _runScenario,
+                events: _events,
               ),
             ),
           if (_rightVisible)
@@ -196,7 +261,13 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               top: 76,
               bottom: 14,
               width: 336,
-              child: _SwitchPanel(state: state, rates: _rates),
+              child: _SwitchPanel(
+                state: state,
+                rates: _rates,
+                history: _history,
+                selectedPort: _selectedPort,
+                onSelectPort: (name) => setState(() => _selectedPort = name),
+              ),
             ),
           Positioned(
             left: 0,
@@ -447,13 +518,27 @@ class _LinkPill extends StatelessWidget {
   }
 }
 
+class _Event {
+  const _Event(this.text, this.at, this.warn);
+
+  final String text;
+  final DateTime at;
+  final bool warn;
+}
+
 class _Scenario {
-  const _Scenario(this.id, this.title, this.subtitle, this.faults);
+  const _Scenario(this.id, this.title, this.subtitle, this.faults,
+      {this.switchPort, this.switchPortName = '1'});
 
   final String id;
   final String title;
   final String subtitle;
   final Map<int, bool> faults;
+
+  /// Null for path-only scenarios. Set to drive one of the switch's own ports -- never the
+  /// controller's uplink, which the firmware refuses anyway.
+  final bool? switchPort;
+  final String switchPortName;
 }
 
 class _ScenarioRail extends ConsumerWidget {
@@ -461,11 +546,13 @@ class _ScenarioRail extends ConsumerWidget {
     required this.state,
     required this.selected,
     required this.onSelect,
+    required this.events,
   });
 
   final KetiState state;
   final String selected;
   final Future<void> Function(_Scenario) onSelect;
+  final List<_Event> events;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -491,6 +578,16 @@ class _ScenarioRail extends ConsumerWidget {
           const SizedBox(height: 18),
           const Text('Modules', style: _kSectionTitle),
           const SizedBox(height: 8),
+          // The switch controller is a module too. Listing only the path modules made the
+          // board that does the CORECONF work the one thing with no row of its own.
+          _ModuleLine(
+            name: 'Switch ctrl',
+            connected: state.connected.contains(KetiDevice.switchController),
+            fresh: _fresh(state.switchSnapshot?.receivedAt),
+            detail: state.switchSnapshot == null
+                ? ''
+                : (state.switchSnapshot!.ethernetLinkUp ? 'Ethernet up' : 'Ethernet down'),
+          ),
           // Separate from the scenario buttons on purpose: one is what was asked for, the
           // other is what the hardware says happened, and a console that shows only the first
           // proves nothing.
@@ -500,8 +597,98 @@ class _ScenarioRail extends ConsumerWidget {
               snapshot: state.pathSnapshots[path],
               connected: state.connected
                   .contains(path == 1 ? KetiDevice.path1 : KetiDevice.path2),
+              onSet: (faulted) =>
+                  ref.read(ketiLinkServiceProvider).setPathFault(path, faulted),
             ),
+          const SizedBox(height: 18),
+          const Text('Activity', style: _kSectionTitle),
+          const SizedBox(height: 8),
+          Expanded(
+            child: events.isEmpty
+                ? const Text('Nothing yet', style: _kMuted)
+                : ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: events.length,
+                    itemBuilder: (_, i) => _EventRow(event: events[i]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModuleLine extends StatelessWidget {
+  const _ModuleLine({
+    required this.name,
+    required this.connected,
+    required this.fresh,
+    required this.detail,
+  });
+
+  final String name;
+  final bool connected;
+  final bool fresh;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = connected && fresh;
+    final colour = !live ? const Color(0xFF9AA3B2) : const Color(0xFF0F766E);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(name,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
           const Spacer(),
+          Text(
+            !connected ? 'no link' : (!fresh ? 'silent' : detail),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colour),
+          ),
+          const SizedBox(width: 62),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventRow extends StatelessWidget {
+  const _EventRow({required this.event});
+
+  final _Event event;
+
+  @override
+  Widget build(BuildContext context) {
+    final at = event.at;
+    final stamp = '${at.hour.toString().padLeft(2, '0')}:'
+        '${at.minute.toString().padLeft(2, '0')}:'
+        '${at.second.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(stamp,
+              style: const TextStyle(
+                  fontSize: 10.5,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                  color: Color(0xFFAAB2BF))),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(event.text,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: event.warn ? const Color(0xFFB91C1C) : const Color(0xFF4B5563))),
+          ),
         ],
       ),
     );
@@ -562,11 +749,13 @@ class _PathStatusLine extends StatelessWidget {
     required this.path,
     required this.snapshot,
     required this.connected,
+    required this.onSet,
   });
 
   final int path;
   final PathSnapshot? snapshot;
   final bool connected;
+  final void Function(bool faulted) onSet;
 
   @override
   Widget build(BuildContext context) {
@@ -598,6 +787,26 @@ class _PathStatusLine extends StatelessWidget {
                     : (faulted ? 'Fault' : 'Normal')),
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colour),
           ),
+          const SizedBox(width: 10),
+          // Direct control alongside the sequences. A sequence sets both paths at once, which
+          // is the story being demonstrated; this is for poking one path on its own without
+          // changing what the sequence list says is selected.
+          GestureDetector(
+            onTap: live ? () => onSet(!faulted) : null,
+            behavior: HitTestBehavior.opaque,
+            child: SizedBox(
+              width: 52,
+              child: Text(
+                faulted ? 'Restore' : 'Cut',
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: live ? const Color(0xFF2563EB) : const Color(0xFFC3C9D4),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -605,16 +814,43 @@ class _PathStatusLine extends StatelessWidget {
 }
 
 class _SwitchPanel extends ConsumerWidget {
-  const _SwitchPanel({required this.state, required this.rates});
+  const _SwitchPanel({
+    required this.state,
+    required this.rates,
+    required this.history,
+    required this.selectedPort,
+    required this.onSelectPort,
+  });
 
   final KetiState state;
   final Map<String, double> rates;
+  final Map<String, List<double>> history;
+  final String? selectedPort;
+  final void Function(String?) onSelectPort;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = state.switchSnapshot;
     final connected = state.connected.contains(KetiDevice.switchController);
     final fresh = _fresh(snapshot?.receivedAt);
+
+    final selected = selectedPort == null
+        ? null
+        : snapshot?.ports.where((p) => p.name == selectedPort).firstOrNull;
+    if (selected != null && snapshot != null) {
+      return _Glass(
+        child: _PortInspector(
+          port: selected,
+          kbps: rates[selected.name],
+          history: history[selected.name] ?? const [],
+          protected: selected.name == snapshot.protectedPort,
+          stale: !fresh,
+          onBack: () => onSelectPort(null),
+          onSetEnabled: (enabled) =>
+              ref.read(ketiLinkServiceProvider).setPortEnabled(selected.name, enabled),
+        ),
+      );
+    }
 
     return _Glass(
       child: Column(
@@ -650,7 +886,10 @@ class _SwitchPanel extends ConsumerWidget {
                 itemBuilder: (_, i) => _PortRow(
                   port: snapshot.ports[i],
                   kbps: rates[snapshot.ports[i].name],
+                  history: history[snapshot.ports[i].name] ?? const [],
                   stale: !fresh,
+                  protected: snapshot.ports[i].name == snapshot.protectedPort,
+                  onOpen: () => onSelectPort(snapshot.ports[i].name),
                   onSetEnabled: (enabled) => ref
                       .read(ketiLinkServiceProvider)
                       .setPortEnabled(snapshot.ports[i].name, enabled),
@@ -681,25 +920,80 @@ class _PortRow extends StatelessWidget {
   const _PortRow({
     required this.port,
     required this.kbps,
+    required this.history,
     required this.stale,
+    required this.protected,
     required this.onSetEnabled,
+    required this.onOpen,
   });
 
   final SwitchPort port;
   final double? kbps;
+  final List<double> history;
   final bool stale;
+
+  /// The controller's own uplink. Disabling it would strand the controller with no way back,
+  /// so the control is shown and disabled rather than hidden -- an absent button invites
+  /// someone to wonder where it went.
+  final bool protected;
   final void Function(bool enabled) onSetEnabled;
+
+  /// Opens the port's own view. The row is the target, not a chevron: a whole row is a bigger
+  /// thing to hit than an icon, and there is nothing else the row does.
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     final faulty = port.inErrors + port.outErrors + port.inDiscards + port.outDiscards > 0;
-    // The controller reaches the switch through this port. Disabling it would strand the
-    // controller with no way back, so the control is shown and disabled rather than hidden --
-    // an absent button invites someone to wonder where it went.
-    final protected = port.name == '1';
+    // Which port that is comes from the controller, not from a constant here.
     final accent = stale || !port.up ? const Color(0xFF9AA3B2) : const Color(0xFF0F766E);
 
-    return Padding(
+    // A twelve-port switch is mostly idle ports, and giving every one of them a chart and two
+    // lines of counters buries the ports that are actually carrying something. Down ports with
+    // no history collapse to a single line -- still listed, still operable, just not shouting.
+    if (!port.up && history.every((v) => v == 0)) {
+      return GestureDetector(
+        onTap: onOpen,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                  color: Color(0xFFD3D9E2), shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 9),
+            Text(port.name.length > 2 ? port.name : 'Port ${port.name}',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF9AA3B2))),
+            const Spacer(),
+            GestureDetector(
+              onTap: (stale || protected) ? null : () => onSetEnabled(true),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                child: Text(protected ? 'uplink' : 'Enable',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: (stale || protected)
+                            ? const Color(0xFFC3C9D4)
+                            : const Color(0xFF2563EB))),
+              ),
+            ),
+          ],
+        ),
+      ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: onOpen,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -736,9 +1030,9 @@ class _PortRow extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 7),
-          _Bar(kbps: kbps ?? 0, muted: stale || !port.up),
-          const SizedBox(height: 7),
+          const SizedBox(height: 6),
+          _Spark(values: history, muted: stale || !port.up),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
@@ -778,6 +1072,7 @@ class _PortRow extends StatelessWidget {
             ),
         ],
       ),
+      ),
     );
   }
 
@@ -788,39 +1083,210 @@ class _PortRow extends StatelessWidget {
   }
 }
 
-/// A log scale, because idle management traffic and a loaded port are orders of magnitude
-/// apart and a linear bar would show the quiet ports as nothing at all.
-class _Bar extends StatelessWidget {
-  const _Bar({required this.kbps, this.muted = false});
+/// A short history of the port's throughput.
+///
+/// Scaled against this port's own maximum rather than a fixed ceiling: idle management traffic
+/// and a loaded port are orders of magnitude apart, and a shared scale would flatten every
+/// quiet port to a line on the floor. The number above it is the absolute value, so the shape
+/// here is about change over time and nothing else.
+/// One port, in full. The place per-port configuration lands as it arrives -- the RECON work
+/// this console feeds into swaps per-port gate schedules, and those need a home that is not a
+/// dialog stacked over the live view.
+class _PortInspector extends StatelessWidget {
+  const _PortInspector({
+    required this.port,
+    required this.kbps,
+    required this.history,
+    required this.protected,
+    required this.stale,
+    required this.onBack,
+    required this.onSetEnabled,
+  });
 
-  final double kbps;
+  final SwitchPort port;
+  final double? kbps;
+  final List<double> history;
+  final bool protected;
+  final bool stale;
+  final VoidCallback onBack;
+  final void Function(bool) onSetEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: onBack,
+          behavior: HitTestBehavior.opaque,
+          child: const Row(
+            children: [
+              Icon(Icons.chevron_left_rounded, size: 20, color: Color(0xFF2563EB)),
+              Text('Switch',
+                  style: TextStyle(
+                      fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF2563EB))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(port.name.length > 2 ? port.name : 'Port ${port.name}', style: _kPanelTitle),
+        const SizedBox(height: 4),
+        Text(
+          '${port.up ? "Link up" : "Link down"}'
+          '${protected ? "  ·  controller uplink" : ""}',
+          style: _kMuted,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(kbps == null ? '--' : kbps!.toStringAsFixed(1),
+                style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.6,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: Color(0xFF111827))),
+            const SizedBox(width: 5),
+            const Text('kbps', style: _kMuted),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _Spark(values: history, muted: stale || !port.up),
+        const SizedBox(height: 18),
+        const Text('Counters', style: _kSectionTitle),
+        const SizedBox(height: 8),
+        _Stat('In', '${port.inOctets} B', '${port.inUnicast} unicast'),
+        _Stat('Out', '${port.outOctets} B', '${port.outUnicast} unicast'),
+        _Stat('Errors', '${port.inErrors} in', '${port.outErrors} out'),
+        _Stat('Discards', '${port.inDiscards} in', '${port.outDiscards} out'),
+        const SizedBox(height: 18),
+        const Text('Configuration', style: _kSectionTitle),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Expanded(
+                child: Text('Administrative state',
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF374151)))),
+            GestureDetector(
+              onTap: (stale || protected) ? null : () => onSetEnabled(!port.up),
+              behavior: HitTestBehavior.opaque,
+              child: Text(
+                protected ? 'protected' : (port.up ? 'Disable' : 'Enable'),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: (stale || protected)
+                        ? const Color(0xFFC3C9D4)
+                        : const Color(0xFF2563EB)),
+              ),
+            ),
+          ],
+        ),
+        const Spacer(),
+        const Text('Gate schedules and shaper settings land here next.', style: _kMuted),
+      ],
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat(this.label, this.a, this.b);
+
+  final String label;
+  final String a;
+  final String b;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          SizedBox(width: 78, child: Text(label, style: _kMuted)),
+          Expanded(
+            child: Text('$a   $b',
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: Color(0xFF374151))),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Spark extends StatelessWidget {
+  const _Spark({required this.values, required this.muted});
+
+  final List<double> values;
   final bool muted;
 
   @override
   Widget build(BuildContext context) {
-    final fraction = kbps <= 0
-        ? 0.0
-        : ((kbps.clamp(0.1, 100000) / 0.1) / 1000000).clamp(0.0, 1.0);
-    final scaled = kbps <= 0 ? 0.0 : (0.12 + 0.88 * (fraction == 0 ? 0 : _log10(kbps + 1) / 5));
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: LinearProgressIndicator(
-        value: scaled.clamp(0.0, 1.0),
-        minHeight: 3,
-        backgroundColor: const Color(0xFFEEF1F5),
-        valueColor: AlwaysStoppedAnimation(
-            muted ? const Color(0xFFD3D9E2) : const Color(0xFF2563EB)),
+    return SizedBox(
+      height: 26,
+      child: CustomPaint(
+        painter: _SparkPainter(
+          values: values,
+          colour: muted ? const Color(0xFFD3D9E2) : const Color(0xFF2563EB),
+        ),
+        size: Size.infinite,
       ),
     );
   }
+}
 
-  static double _log10(double v) {
-    var result = 0.0;
-    var x = v;
-    while (x >= 10) {
-      x /= 10;
-      result += 1;
+class _SparkPainter extends CustomPainter {
+  _SparkPainter({required this.values, required this.colour});
+
+  final List<double> values;
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final baseline = Paint()
+      ..color = const Color(0xFFEEF1F5)
+      ..strokeWidth = 1;
+    canvas.drawLine(Offset(0, size.height - 0.5), Offset(size.width, size.height - 0.5),
+        baseline);
+    if (values.length < 2) return;
+
+    var peak = 0.0;
+    for (final v in values) {
+      if (v > peak) peak = v;
     }
-    return result + (x - 1) / 9;
+    // A flat line at zero is the honest picture of an idle port; scaling it up to fill the box
+    // would invent activity that is not there.
+    if (peak <= 0) return;
+
+    final step = size.width / (values.length - 1);
+    final path = Path();
+    for (var i = 0; i < values.length; ++i) {
+      final x = i * step;
+      final y = size.height - (values[i] / peak) * (size.height - 2) - 1;
+      i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+    }
+
+    final fill = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = colour.withValues(alpha: 0.10));
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = colour
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..strokeJoin = StrokeJoin.round);
   }
+
+  @override
+  bool shouldRepaint(_SparkPainter old) =>
+      old.values.length != values.length || old.colour != colour;
 }

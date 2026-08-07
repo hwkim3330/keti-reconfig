@@ -29,12 +29,22 @@ const cacheRoot = path.join(CLI, 'tsc2cbor/.yang-cache');
 const catalogs = fs.readdirSync(cacheRoot, { withFileTypes: true })
   .filter(e => e.isDirectory())
   .map(e => e.name);
-if (catalogs.length !== 1) {
-  console.error(`expected exactly one cached catalog in ${cacheRoot}, found ${catalogs.length}`);
-  console.error('pass the intended one explicitly rather than guessing which device it came from');
+
+// More than one device has been on this bench, so which catalog to build against is a choice
+// and not something to infer. Name it with KETI_CATALOG; the table it produces is only valid
+// for the device that reports that checksum, and the firmware refuses any other.
+const wantedCatalog = process.env.KETI_CATALOG;
+if (!wantedCatalog && catalogs.length !== 1) {
+  console.error(`${catalogs.length} cached catalogs in ${cacheRoot}:`);
+  for (const c of catalogs) console.error(`  ${c}`);
+  console.error('set KETI_CATALOG to the one this firmware is for');
   process.exit(1);
 }
-const checksum = catalogs[0];
+const checksum = wantedCatalog ?? catalogs[0];
+if (!catalogs.includes(checksum)) {
+  console.error(`catalog ${checksum} is not cached; run "keti-tsn download" against that device`);
+  process.exit(1);
+}
 const cacheDir = path.join(cacheRoot, checksum);
 
 const wanted = yaml.load(fs.readFileSync(pathsFile, 'utf8'));

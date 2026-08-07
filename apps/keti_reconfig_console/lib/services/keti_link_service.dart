@@ -60,6 +60,7 @@ class SwitchSnapshot {
     required this.catalogOk,
     required this.catalog,
     this.platform = '',
+    this.protectedPort = '',
     required this.receivedAt,
   });
 
@@ -77,6 +78,11 @@ class SwitchSnapshot {
   /// part answers LAN9662 and the target answers LAN9692, and a hardcoded label would be
   /// quietly wrong on one of them.
   final String platform;
+
+  /// The port the controller itself reaches the switch through, as reported by the controller.
+  /// Not a constant here: it was port 1 on the LAN9662 and is port 12 on the LAN9692, and a
+  /// second copy of that fact would eventually disagree with the firmware that enforces it.
+  final String protectedPort;
   final DateTime receivedAt;
 }
 
@@ -284,7 +290,7 @@ class KetiLinkService {
   }
 
   void _onSwitchHeader(String line) {
-    // !SWITCH:<seq>:<portCount>:<LINK|NOLINK>:<CATALOG_OK|CATALOG_BAD>:<catalog>
+    // !SWITCH:<seq>:<portCount>:<LINK|NOLINK>:<CATALOG_OK|CATALOG_BAD>:<catalog>:<uplinkPort>
     final f = line.split(':');
     if (f.length < 6) return;
     _partialSequence = int.tryParse(f[1]) ?? -1;
@@ -295,6 +301,7 @@ class KetiLinkService {
       ethernetLinkUp: f[3] == 'LINK',
       catalogOk: f[4] == 'CATALOG_OK',
       catalog: f[5],
+      protectedPort: f.length > 6 ? f[6] : '',
       receivedAt: DateTime.now(),
     );
     final expected = int.tryParse(f[2]) ?? 0;
@@ -344,6 +351,7 @@ class KetiLinkService {
         catalogOk: header.catalogOk,
         catalog: header.catalog,
         platform: _platform,
+        protectedPort: header.protectedPort,
         receivedAt: DateTime.now(),
       ),
     );

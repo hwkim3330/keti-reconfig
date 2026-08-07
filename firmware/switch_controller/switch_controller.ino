@@ -23,7 +23,7 @@
 constexpr int kSck = 48, kMosi = 21, kCs = 45, kMiso = 47;
 
 const IPAddress kSelf(192, 168, 1, 20);
-const IPAddress kSwitch(192, 168, 1, 10);
+const IPAddress kSwitch(192, 168, 1, 12);
 const IPAddress kMask(255, 255, 255, 0);
 const IPAddress kGateway(192, 168, 1, 1);
 const uint16_t kCoapPort = 5683;
@@ -87,8 +87,9 @@ uint32_t sequenceNumber = 0;
 // back, and nothing here could undo that -- recovery would need the serial console. Stated as
 // a constant rather than detected: the controller cannot see which port its own frames arrive
 // on without walking the bridge FDB, and a guard that guesses is worse than one that is
-// written down. On a different rig, change this.
-static const char *kProtectedPort = "1";
+// written down. It is published in every snapshot so the console does not keep its own copy
+// to fall out of step -- on the LAN9662 bench rig this was port 1, on the LAN9692 it is 12.
+static const char *kProtectedPort = "12";
 
 volatile bool pendingPortWrite = false;
 bool pendingPortEnable = false;
@@ -108,9 +109,9 @@ void notifyLine(const char *line) {
 void publishSnapshot(const PortTable &table, bool linkUp) {
   ++sequenceNumber;
   char line[192];
-  snprintf(line, sizeof(line), "!SWITCH:%lu:%d:%s:%s:%s", (unsigned long)sequenceNumber,
+  snprintf(line, sizeof(line), "!SWITCH:%lu:%d:%s:%s:%s:%s", (unsigned long)sequenceNumber,
            table.count, linkUp ? "LINK" : "NOLINK", catalogMatches ? "CATALOG_OK" : "CATALOG_BAD",
-           deviceCatalog);
+           deviceCatalog, kProtectedPort);
   notifyLine(line);
   // The device names itself. A part number written into the console would be wrong the day the
   // LAN9692 replaces the bench LAN9662, with nothing to catch it.
