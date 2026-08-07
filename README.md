@@ -398,9 +398,15 @@ up 이냐 down 이냐만 보여주는 콘솔은 **"올라와 있는데 상태가
 **PTP 도 같은 모양이다**: `instances/instance: []`, `ltcs/ltc: []`. 인스턴스를 만들어 보는
 것이 다음 단계이고 아직 안 해봤다.
 
-**그래서 둘 다 파서를 미리 쓰지 않았다.** 볼 수 없는 데이터에 대한 파서는 이 프로젝트에서
-반복적으로 틀렸다(iPATCH 형태, 키 조회, LED 핀). 장비에서 실제 바이트가 나오는 것을 본 뒤에
-쓰는 편이 빠르다.
+**SID 는 미리 구워 뒀고, 파싱은 안 썼다.** 둘은 성격이 다르다 — SID 는 카탈로그에서 나오는
+**사실**이라 미리 넣어도 틀릴 수 없고 나중에 한 단계를 없앤다. 반면 와이어 형식(CBOR 인코딩,
+리스트 경계, 태그)에 대한 짐작은 이 프로젝트에서 네 번 틀렸다(iPATCH 형태, 키 조회, LED 핀,
+decimal64). 그 부분은 장비가 실제로 보내는 바이트를 본 뒤에 쓰는 편이 결국 빠르다.
+
+구워둔 SID: PTP `default-ds/clock-identity`(15159), `instance-enable`(15169),
+`current-ds/offset-from-master`(15155), `parent-ds/…/clock-identity`(15218);
+LLDP `port/admin-status`(11014), `remote-systems-data/chassis-id`(11034),
+`port-id`(11042), `system-name`(11058).
 
 그 밖에 카탈로그에 있는 것: PSFP(802.1Qci), frame preemption(802.1Qbu),
 802.1CB **stream identification** (FRER 본체는 없음), ACL, aggregation, DHCP, hardware.

@@ -53,9 +53,17 @@ static const KetiSidEntry kKetiSidTable[] = {
     {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-oversize-frames", 5031u},
     {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-undersize-frames", 5032u},
     {"mchp-velocitysp-system:save-config", 21007u},
+    {"ieee1588-ptp:ptp/instances/instance/default-ds/clock-identity", 15159u},
+    {"ieee1588-ptp:ptp/instances/instance/default-ds/instance-enable", 15169u},
+    {"ieee1588-ptp:ptp/instances/instance/current-ds/offset-from-master", 15155u},
+    {"ieee1588-ptp:ptp/instances/instance/parent-ds/parent-port-identity/clock-identity", 15218u},
+    {"ieee802-dot1ab-lldp:lldp/port/admin-status", 11014u},
+    {"ieee802-dot1ab-lldp:lldp/port/remote-systems-data/chassis-id", 11034u},
+    {"ieee802-dot1ab-lldp:lldp/port/remote-systems-data/port-id", 11042u},
+    {"ieee802-dot1ab-lldp:lldp/port/remote-systems-data/system-name", 11058u},
 };
 
-static constexpr int kKetiSidCount = 34;
+static constexpr int kKetiSidCount = 42;
 
 inline uint32_t ketiSidFor(const char *path) {
   for (int i = 0; i < kKetiSidCount; ++i) {

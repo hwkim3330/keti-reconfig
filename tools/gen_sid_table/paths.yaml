@@ -75,3 +75,17 @@
 
 # The RPC that writes running config to flash. Addressed like any other node: {sid: null}.
 - "/mchp-velocitysp-system:save-config"
+
+# PTP and LLDP: not implemented on the current switch build (empty lists, null containers), so
+# nothing reads these yet. They are resolved now because a SID is a fact from the catalog, not
+# a guess about the wire -- baking them costs nothing and removes a step later. The parsing is
+# deliberately still absent: that part has to be written against bytes the device actually
+# sends, which is where every wrong guess in this project came from.
+- "/ieee1588-ptp:ptp/instances/instance/default-ds/clock-identity"
+- "/ieee1588-ptp:ptp/instances/instance/default-ds/instance-enable"
+- "/ieee1588-ptp:ptp/instances/instance/current-ds/offset-from-master"
+- "/ieee1588-ptp:ptp/instances/instance/parent-ds/parent-port-identity/clock-identity"
+- "/ieee802-dot1ab-lldp:lldp/port/admin-status"
+- "/ieee802-dot1ab-lldp:lldp/port/remote-systems-data/chassis-id"
+- "/ieee802-dot1ab-lldp:lldp/port/remote-systems-data/port-id"
+- "/ieee802-dot1ab-lldp:lldp/port/remote-systems-data/system-name"
