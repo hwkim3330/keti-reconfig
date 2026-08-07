@@ -1,116 +1,126 @@
-// Find the WIZnet part: which chip, and on which pins.
+// Locate the W5500's SPI pins by exhaustive search.
 //
-// Guessing pinouts found nothing, including the documented Waveshare ESP32-S3-ETH layout, so
-// this widens the search on both axes. WIZnet's parts do not share an SPI framing: the W5500
-// takes a 3-byte header (addr hi, addr lo, control) and answers VERSIONR 0x0039 with 0x04,
-// while the W5100S takes an opcode plus a 2-byte address and answers VER 0x0080 with 0x51,
-// and the W6100 identifies itself at CIDR 0x0000 with 0x61 0x00. A probe that only speaks
-// W5500 is blind to the other two, which is the likely reason the first attempts saw nothing.
+// The part is known to be a W5500; what is not known is which pins it sits on, and guessing
+// from published pinouts failed repeatedly. So this searches instead of guessing.
 //
-// NEVER put GPIO19 or GPIO20 in this list. They are the ESP32-S3's native USB D-/D+, and
-// reassigning them drops the USB link mid-probe -- the board then needs a BOOT-held replug
-// to recover. That is how the first run of this probe ended.
+// The trick that makes an exhaustive search cheap: bit-bang the transfer rather than using the
+// SPI peripheral, and on every clock edge snapshot the whole GPIO input register. Every
+// candidate pin is then sampled at once, so MISO costs nothing to find and only the
+// (SCK, MOSI, CS) triple has to be enumerated -- thousands of combinations instead of
+// hundreds of thousands.
+//
+// Two exclusions matter and both were learned the hard way:
+//   GPIO19/20 are the native USB D-/D+. Driving them drops the link to the board mid-scan and
+//   costs a BOOT-held replug to recover.
+//   GPIO33-37 are the octal PSRAM bus on an R8 part. Earlier probes tried them as SPI pins,
+//   which could never have worked.
 #include <Arduino.h>
-#include <SPI.h>
+#include "soc/gpio_struct.h"
 
-struct Pinout {
-  const char *name;
-  int sck, miso, mosi, cs, rst;
-};
+// Everything usable on an S3 with 16MB flash and octal PSRAM.
+const int kPins[] = {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+                     16, 17, 18, 21, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48};
+constexpr int kPinCount = sizeof(kPins) / sizeof(kPins[0]);
 
-const Pinout kPinouts[] = {
-    {"Waveshare S3-ETH", 13, 12, 11, 14,  9},
-    {"WIZnet shield",    12, 13, 11, 10,  9},
-    {"alt 36/37/35",     36, 37, 35, 39, 38},
-    {"alt 40/41/42",     40, 41, 42, 39, 38},
-    {"alt 5/6/7",         5,  6,  7,  4,  3},
-    {"alt 1/2/3",         1,  2,  3,  4,  5},
-    {"alt 47/48/45",     47, 48, 45, 46, 21},
-};
-
-void releaseReset(int rst) {
-  if (rst < 0) return;
-  pinMode(rst, OUTPUT);
-  digitalWrite(rst, LOW);
-  delay(5);
-  digitalWrite(rst, HIGH);
-  delay(120);
+inline void snapshot(uint32_t &lo, uint32_t &hi) {
+  lo = GPIO.in;
+  hi = GPIO.in1.val;
 }
 
-uint8_t w5500Read(SPIClass &spi, int cs, uint16_t addr) {
-  spi.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+inline bool pinHigh(int pin, uint32_t lo, uint32_t hi) {
+  return pin < 32 ? (lo >> pin) & 1u : (hi >> (pin - 32)) & 1u;
+}
+
+// One W5500 register read, bit-banged. Captures the input register on each of the eight data
+// clocks so any pin can be checked afterwards as a candidate MISO.
+void readCapture(int sck, int mosi, int cs, uint16_t addr, uint32_t *lo, uint32_t *hi) {
+  const uint8_t header[3] = {uint8_t(addr >> 8), uint8_t(addr & 0xFF), 0x01};
   digitalWrite(cs, LOW);
-  spi.transfer(addr >> 8);
-  spi.transfer(addr & 0xFF);
-  spi.transfer(0x01);
-  const uint8_t v = spi.transfer(0x00);
+  for (int byteIndex = 0; byteIndex < 3; ++byteIndex) {
+    for (int bit = 7; bit >= 0; --bit) {
+      digitalWrite(mosi, (header[byteIndex] >> bit) & 1);
+      delayMicroseconds(1);
+      digitalWrite(sck, HIGH);
+      delayMicroseconds(1);
+      digitalWrite(sck, LOW);
+    }
+  }
+  for (int bit = 0; bit < 8; ++bit) {
+    delayMicroseconds(1);
+    digitalWrite(sck, HIGH);
+    snapshot(lo[bit], hi[bit]);   // W5500 shifts out on the falling edge; sample on the rising
+    delayMicroseconds(1);
+    digitalWrite(sck, LOW);
+  }
   digitalWrite(cs, HIGH);
-  spi.endTransaction();
-  return v;
 }
 
-uint8_t w5100Read(SPIClass &spi, int cs, uint16_t addr) {
-  spi.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(cs, LOW);
-  spi.transfer(0x0F);  // read opcode
-  spi.transfer(addr >> 8);
-  spi.transfer(addr & 0xFF);
-  const uint8_t v = spi.transfer(0x00);
-  digitalWrite(cs, HIGH);
-  spi.endTransaction();
-  return v;
+uint8_t assemble(int miso, const uint32_t *lo, const uint32_t *hi) {
+  uint8_t value = 0;
+  for (int bit = 0; bit < 8; ++bit) {
+    value = (value << 1) | (pinHigh(miso, lo[bit], hi[bit]) ? 1 : 0);
+  }
+  return value;
 }
 
-// Returns a chip name when something identifies itself, else nullptr.
-const char *identify(SPIClass &spi, int cs) {
-  if (w5500Read(spi, cs, 0x0039) == 0x04 && w5500Read(spi, cs, 0x0039) == 0x04) return "W5500";
-  if (w5100Read(spi, cs, 0x0080) == 0x51 && w5100Read(spi, cs, 0x0080) == 0x51) return "W5100S";
-  if (w5500Read(spi, cs, 0x0000) == 0x61 && w5500Read(spi, cs, 0x0001) == 0x00) return "W6100";
-  return nullptr;
+void setup() {
+  Serial.begin(115200);
+  delay(1500);
 }
-
-// Every pin worth trying as MISO. 19 and 20 are the USB lines and must never appear here;
-// 26-32 are the internal flash/PSRAM bus.
-const int kMisoSweep[] = {1, 2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-                          16, 17, 18, 21, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48};
-
-void setup() { Serial.begin(115200); }
 
 void loop() {
-  Serial.println("\n=== WIZnet probe: known pinouts, three chip families ===");
-  bool found = false;
-  for (const auto &p : kPinouts) {
-    releaseReset(p.rst);
-    pinMode(p.cs, OUTPUT);
-    digitalWrite(p.cs, HIGH);
-    SPIClass spi(FSPI);
-    spi.begin(p.sck, p.miso, p.mosi, -1);
-    const char *chip = identify(spi, p.cs);
-    spi.end();
-    Serial.printf("%-18s sck=%2d miso=%2d mosi=%2d cs=%2d rst=%2d -> %s\n", p.name, p.sck,
-                  p.miso, p.mosi, p.cs, p.rst, chip ? chip : "-");
-    if (chip) found = true;
+  Serial.println("\n=== W5500 pin search (bit-banged, all GPIO sampled per clock) ===");
+  Serial.printf("candidate pins: %d, triples to try: %d\n", kPinCount,
+                kPinCount * (kPinCount - 1) * (kPinCount - 2));
+  const uint32_t started = millis();
+  int hits = 0;
+
+  for (int a = 0; a < kPinCount; ++a) {
+    // Idle state: everything an input with a pull-up. A pull-up also releases any active-low
+    // reset line the board may have, which a floating pin would leave asserted.
+    for (int i = 0; i < kPinCount; ++i) pinMode(kPins[i], INPUT_PULLUP);
+    const int sck = kPins[a];
+    pinMode(sck, OUTPUT);
+    digitalWrite(sck, LOW);
+
+    for (int b = 0; b < kPinCount; ++b) {
+      if (b == a) continue;
+      const int mosi = kPins[b];
+      pinMode(mosi, OUTPUT);
+
+      for (int c = 0; c < kPinCount; ++c) {
+        if (c == a || c == b) continue;
+        const int cs = kPins[c];
+        pinMode(cs, OUTPUT);
+        digitalWrite(cs, HIGH);
+
+        uint32_t lo[8], hi[8];
+        readCapture(sck, mosi, cs, 0x0039, lo, hi);
+        for (int m = 0; m < kPinCount; ++m) {
+          if (m == a || m == b || m == c) continue;
+          if (assemble(kPins[m], lo, hi) != 0x04) continue;
+          // Confirm: a second read must agree, and a different register must not also read
+          // 0x04, which is what a stuck or coupled line would do.
+          uint32_t lo2[8], hi2[8], lo3[8], hi3[8];
+          readCapture(sck, mosi, cs, 0x0039, lo2, hi2);
+          readCapture(sck, mosi, cs, 0x0000, lo3, hi3);
+          const uint8_t again = assemble(kPins[m], lo2, hi2);
+          const uint8_t other = assemble(kPins[m], lo3, hi3);
+          if (again == 0x04 && other != 0x04) {
+            Serial.printf("  W5500 FOUND  sck=%d mosi=%d cs=%d miso=%d  (MR=0x%02X)\n", sck,
+                          mosi, cs, kPins[m], other);
+            ++hits;
+          }
+        }
+        pinMode(cs, INPUT_PULLUP);
+      }
+      pinMode(mosi, INPUT_PULLUP);
+    }
+    Serial.printf("  ... sck=%d done (%lu s elapsed, %d hit%s)\n", sck,
+                  (millis() - started) / 1000, hits, hits == 1 ? "" : "s");
   }
 
-  if (!found) {
-    // Maybe only the MISO guess is wrong. Hold the Waveshare bus and sweep the rest.
-    Serial.println("--- sweeping MISO with sck=13 mosi=11 cs=14 rst=9 ---");
-    releaseReset(9);
-    pinMode(14, OUTPUT);
-    digitalWrite(14, HIGH);
-    for (const int miso : kMisoSweep) {
-      if (miso == 13 || miso == 11 || miso == 14 || miso == 9) continue;
-      SPIClass spi(FSPI);
-      spi.begin(13, miso, 11, -1);
-      const char *chip = identify(spi, 14);
-      spi.end();
-      if (chip) {
-        Serial.printf("  MISO=%d -> %s   <== FOUND\n", miso, chip);
-        found = true;
-      }
-    }
-    if (!found) Serial.println("  nothing on any MISO");
-  }
-  Serial.println(found ? "=== FOUND ===" : "=== still nothing ===");
-  delay(5000);
+  Serial.printf("=== search complete: %d hit%s in %lu s ===\n", hits, hits == 1 ? "" : "s",
+                (millis() - started) / 1000);
+  delay(10000);
 }
