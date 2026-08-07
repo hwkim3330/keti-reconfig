@@ -557,6 +557,16 @@ class KetiLinkService {
   Future<bool> setSchedule(KetiDevice which, String port, String preset) =>
       sendPath(which, '!SCHED:$port:$preset');
 
+  /// Writes the switch's running configuration to flash. Separate and explicit on purpose:
+  /// demo state saved by accident means the next power-on starts somewhere nobody chose.
+  Future<bool> saveConfig(KetiDevice which) => sendPath(which, '!SAVE');
+
+  /// Turns gate control off on every port that has a schedule, and touches nothing else --
+  /// not the uplink, not flash, not the addresses. There is no factory reset on this device,
+  /// and this is not one: it undoes what the demo did, and a reboot would still return the
+  /// switch to whatever was last saved.
+  Future<bool> clearGating(KetiDevice which) => sendPath(which, '!BASELINE');
+
   Future<bool> setPortEnabled(KetiDevice which, String port, bool enabled) {
     return sendPath(which, '!PORT:$port:${enabled ? 'UP' : 'DOWN'}');
   }

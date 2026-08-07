@@ -52,9 +52,10 @@ static const KetiSidEntry kKetiSidTable[] = {
     {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-fcs-frames", 5029u},
     {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-oversize-frames", 5031u},
     {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-undersize-frames", 5032u},
+    {"mchp-velocitysp-system:save-config", 21007u},
 };
 
-static constexpr int kKetiSidCount = 33;
+static constexpr int kKetiSidCount = 34;
 
 inline uint32_t ketiSidFor(const char *path) {
   for (int i = 0; i < kKetiSidCount; ++i) {

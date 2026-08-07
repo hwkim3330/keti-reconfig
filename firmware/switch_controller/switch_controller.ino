@@ -91,6 +91,9 @@ bool extractChecksum(const uint8_t *payload, int length, char *out, size_t capac
 }
 
 bool catalogMatches = false;
+
+// The most recent parsed port table, so bulk actions do not have to re-read the switch.
+PortTable lastPorts;
 char deviceCatalog[64] = "";
 char devicePlatform[64] = "";
 
@@ -131,6 +134,9 @@ static const SchedulePreset kPresets[] = {
 volatile bool pendingScheduleWrite = false;
 String pendingSchedulePort;
 String pendingScheduleId;
+
+volatile bool pendingSave = false;
+volatile bool pendingBaseline = false;
 
 volatile bool pendingPortWrite = false;
 bool pendingPortEnable = false;
@@ -204,6 +210,19 @@ class ControlCallbacks final : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
     String command = characteristic->getValue();
     command.trim();
+    // !SAVE -- write running config to flash. Deliberately a separate, explicit action: demo
+    // state saved by accident means the next power-on starts somewhere nobody chose.
+    if (command == "!SAVE") {
+      if (catalogMatches) pendingSave = true;
+      return;
+    }
+    // !BASELINE -- put every port back to enabled with gating off. There is no factory-reset
+    // RPC on this device, and rebooting only returns to whatever was last saved, so the useful
+    // reset is this one: undo what the demo did, without touching the saved configuration.
+    if (command == "!BASELINE") {
+      if (catalogMatches) pendingBaseline = true;
+      return;
+    }
     // !SCHED:<port>:<preset|off>
     if (command.startsWith("!SCHED:")) {
       const int separator = command.indexOf(':', 7);
@@ -365,6 +384,45 @@ void loop() {
     }
   }
 
+  if (pendingSave) {
+    pendingSave = false;
+    uint8_t saveCode = 0;
+    const bool ok = postRpc(ketiSidFor("mchp-velocitysp-system:save-config"), &saveCode);
+    Serial.printf("save-config: %s (code %d.%02d)\n", ok ? "accepted" : "rejected",
+                  saveCode >> 5, saveCode & 0x1F);
+    char ack[64];
+    snprintf(ack, sizeof(ack), "!ACK:SAVE:%s:%d.%02d", ok ? "OK" : "FAIL", saveCode >> 5,
+             saveCode & 0x1F);
+    notifyLine(ack);
+  }
+
+  if (pendingBaseline) {
+    pendingBaseline = false;
+    const char *base = "ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/"
+                       "ieee802-dot1q-sched-bridge:gate-parameter-table";
+    char path[220];
+    uint8_t buffer[128];
+    uint8_t code2 = 0;
+    int touched = 0;
+    for (int i = 0; i < lastPorts.count; ++i) {
+      const PortState &p = lastPorts.ports[i];
+      // The uplink is left exactly as it is: the guards exist because this controller cannot
+      // undo a change that cuts its own path, and a bulk reset is no different.
+      if (strcmp(p.name, kProtectedPort) == 0) continue;
+      if (p.gateEnabled || p.gateCount > 0) {
+        snprintf(path, sizeof(path), "%s/gate-enabled", base);
+        patchRaw(buffer, buildPatchBool(buffer, ketiSidFor(path), p.name, false), &code2);
+        snprintf(path, sizeof(path), "%s/config-change", base);
+        patchRaw(buffer, buildPatchBool(buffer, ketiSidFor(path), p.name, true), &code2);
+        ++touched;
+      }
+    }
+    Serial.printf("baseline: gating cleared on %d port(s)\n", touched);
+    char ack[64];
+    snprintf(ack, sizeof(ack), "!ACK:BASELINE:OK:%d", touched);
+    notifyLine(ack);
+  }
+
   if (pendingScheduleWrite) {
     pendingScheduleWrite = false;
     const char *port = pendingSchedulePort.c_str();
@@ -465,6 +523,7 @@ void loop() {
     if (m > 0) {
       static PortTable table;
       if (parseInterfaces(payload, m, &table)) {
+        lastPorts = table;   // kept so a baseline reset knows which ports exist
         Serial.printf("  %d port(s) discovered\n", table.count);
         for (int i = 0; i < table.count; ++i) {
           const PortState &p = table.ports[i];

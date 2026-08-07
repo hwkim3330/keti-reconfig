@@ -396,14 +396,33 @@ up 이냐 down 이냐만 보여주는 콘솔은 **"올라와 있는데 상태가
 - 그 밖에 장비가 가진 것: PSFP(802.1Qci), frame preemption(802.1Qbu),
   802.1CB stream identification(FRER), ACL, aggregation, DHCP, hardware sensors.
 
-## 저장 (save-config)
+## 저장과 게이팅 해제
 
-스케줄과 포트 상태는 **running config 에만** 있다. 스위치를 재부팅하면 사라진다.
-`keti-tsn post setup/save-config.yaml` 이 flash 에 쓴다.
+스케줄과 포트 상태는 **running config 에만** 있다. 재부팅하면 마지막으로 저장한 상태로
+돌아간다. 콘솔의 두 동작:
 
-**데모 상태는 저장하지 않는 것이 맞다.** 고장 주입이나 시험용 스케줄이 flash 에 남으면 다음에
-켤 때 원인 모를 상태에서 시작한다. 관리 IP 는 이미 저장했고(그건 없으면 아무것도 안 되므로),
-나머지는 켤 때마다 깨끗한 편이 낫다.
+| 동작 | 하는 일 | 안 하는 일 |
+|------|---------|-----------|
+| **Save to flash** | running config 를 flash 에 쓴다 (`save-config`, SID 21007, POST `{21007: null}`) | — |
+| **Clear gating** | 스케줄이 걸린 포트의 gate-enabled 를 끄고 config-change 로 반영 | 업링크는 건드리지 않음. flash 를 쓰지 않음. 재부팅·IP·그 밖의 설정 일절 안 건드림 |
+
+**"초기화"라고 부르지 않는다.** 이 장비에는 **공장 초기화 RPC 가 없다** — 카탈로그 전체를
+뒤져도 없다. 있는 것은 `system-restart`(19018) 와 `system-shutdown`(19019) 뿐이고, 재부팅은
+"저장된 상태로 되돌리기"이지 초기화가 아니다. 버튼은 **하는 일 그대로** 이름 붙였다:
+"Reset" 은 스케줄 하나 지우는 것부터 장비를 밀어버리는 것까지 다 뜻할 수 있다.
+
+**저장이 유용한 자리:**
+- 관리 IP — 이미 저장했다. 없으면 재부팅 후 컨트롤러가 스위치에 닿지 못한다.
+- **전원을 켜면 곧바로 있어야 할 기준 스케줄** — 데모장에서 정전이 나도 스위치가 알려진 TSN
+  상태로 올라온다.
+- 반대로 **고장 상태는 저장하지 말 것.** 주입해둔 고장이 flash 에 남으면 다음에 켤 때
+  원인 모를 상태에서 시작한다. 지우고 나서 저장하는 순서가 맞다.
+
+## FRER 은 이 장비에 없다
+
+카탈로그에 `ieee802-dot1cb-stream-identification` (+`-dev`, `-types`) 은 있지만 이것은
+스트림 **식별**(802.1CB 6장)이다. **복제/제거 본체(`ieee802-dot1cb-frer`)는 없고**,
+sequence-generation / recovery 계열 노드도 카탈로그 전체에 하나도 없다. 매뉴얼과 일치한다.
 
 ## 소크 (tools/soak.py)
 

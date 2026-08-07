@@ -9,6 +9,7 @@
 #include <NetworkUdp.h>
 
 constexpr uint8_t kCoapFetch = 0x05;
+constexpr uint8_t kCoapPost = 0x02;
 constexpr uint8_t kCoapIpatch = 0x07;
 constexpr uint16_t kContentFormatYangIdentifiersCbor = 141;
 constexpr uint16_t kContentFormatYangInstancesCbor = 142;
@@ -221,6 +222,45 @@ int fetchSidKeyed(uint32_t sid, const char *key, uint8_t *out, size_t capacity,
     if (!answered) return total > 0 ? total : -1;
   }
   return total;
+}
+
+// Invokes an RPC: POST with {sid: null}. Same endpoint and framing as a write; only the
+// method and the shape of the payload differ.
+bool postRpc(uint32_t sid, uint8_t *codeOut) {
+  uint8_t packet[64];
+  size_t n = 0;
+  packet[n++] = 0x40;
+  packet[n++] = kCoapPost;
+  const uint16_t id = messageId++;
+  packet[n++] = id >> 8;
+  packet[n++] = id & 0xFF;
+  packet[n++] = 0xB1;
+  packet[n++] = 'c';
+  packet[n++] = 0x11;
+  packet[n++] = uint8_t(kContentFormatYangInstancesCbor);
+  packet[n++] = 0x51;
+  packet[n++] = uint8_t(kContentFormatYangInstancesCbor);
+  packet[n++] = 0xFF;
+  n += cborUint(packet + n, 1, 5);   // map(1)
+  n += cborUint(packet + n, sid, 0);
+  packet[n++] = 0xF6;                // null: the RPC takes no input
+
+  udp.beginPacket(kSwitch, kCoapPort);
+  udp.write(packet, n);
+  udp.endPacket();
+
+  const uint32_t deadline = millis() + 5000;   // saving to flash is slower than a read
+  while (millis() < deadline) {
+    const int size = udp.parsePacket();
+    if (size <= 0) { delay(2); continue; }
+    uint8_t buffer[256];
+    const int got = udp.read(buffer, sizeof(buffer));
+    if (got < 4) continue;
+    if (uint16_t((buffer[2] << 8) | buffer[3]) != id) continue;
+    *codeOut = buffer[1];
+    return (buffer[1] >> 5) == 2;
+  }
+  return false;
 }
 
 // Sends one iPATCH whose payload is already encoded. Everything below builds a payload and

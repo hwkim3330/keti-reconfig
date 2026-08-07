@@ -937,6 +937,24 @@ class _SwitchPanel extends ConsumerWidget {
               _WidenButton(wide: wide, onTap: onToggleWide),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              // Named for what they do. "Reset" would cover anything from clearing a schedule
+              // to wiping the device, and this only does the first.
+              _TextAction(
+                label: 'Clear gating',
+                enabled: connected,
+                onTap: () => ref.read(ketiLinkServiceProvider).clearGating(active),
+              ),
+              const SizedBox(width: 14),
+              _TextAction(
+                label: 'Save to flash',
+                enabled: connected,
+                onTap: () => ref.read(ketiLinkServiceProvider).saveConfig(active),
+              ),
+            ],
+          ),
           if (present.length > 1) ...[
             const SizedBox(height: 10),
             Row(
@@ -1497,6 +1515,30 @@ const _kPresets = [
   _Preset('fast', 'TC7 200 us'),
   _Preset('off', 'No gating'),
 ];
+
+class _TextAction extends StatelessWidget {
+  const _TextAction({required this.label, required this.enabled, required this.onTap});
+
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: enabled ? const Color(0xFF2563EB) : const Color(0xFFC3C9D4))),
+      ),
+    );
+  }
+}
 
 class _WidenButton extends StatelessWidget {
   const _WidenButton({required this.wide, required this.onTap});

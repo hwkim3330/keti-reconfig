@@ -72,3 +72,6 @@
 - "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-fcs-frames"
 - "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-oversize-frames"
 - "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-undersize-frames"
+
+# The RPC that writes running config to flash. Addressed like any other node: {sid: null}.
+- "/mchp-velocitysp-system:save-config"
