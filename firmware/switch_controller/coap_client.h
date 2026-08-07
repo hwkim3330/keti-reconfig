@@ -221,6 +221,74 @@ int fetchSidKeyed(uint32_t sid, const char *key, uint8_t *out, size_t capacity,
   return total;
 }
 
+// Sends one iPATCH whose payload is already encoded. Everything below builds a payload and
+// hands it here, because the switch takes each item as its own request -- that is what the CLI
+// emits for a schedule, and matching what works beats inventing a batched form.
+bool patchRaw(const uint8_t *payload, size_t payloadLength, uint8_t *codeOut) {
+  uint8_t packet[256];
+  size_t n = 0;
+  packet[n++] = 0x40;
+  packet[n++] = kCoapIpatch;
+  const uint16_t id = messageId++;
+  packet[n++] = id >> 8;
+  packet[n++] = id & 0xFF;
+  packet[n++] = 0xB1;
+  packet[n++] = 'c';
+  packet[n++] = 0x11;
+  packet[n++] = uint8_t(kContentFormatYangInstancesCbor);
+  packet[n++] = 0x51;
+  packet[n++] = uint8_t(kContentFormatYangDataCborSid);
+  packet[n++] = 0xFF;
+  if (n + payloadLength > sizeof(packet)) return false;
+  memcpy(packet + n, payload, payloadLength);
+  n += payloadLength;
+
+  udp.beginPacket(kSwitch, kCoapPort);
+  udp.write(packet, n);
+  udp.endPacket();
+
+  const uint32_t deadline = millis() + 3000;
+  while (millis() < deadline) {
+    const int size = udp.parsePacket();
+    if (size <= 0) { delay(2); continue; }
+    uint8_t buffer[512];
+    const int got = udp.read(buffer, sizeof(buffer));
+    if (got < 4) continue;
+    if (uint16_t((buffer[2] << 8) | buffer[3]) != id) continue;
+    *codeOut = buffer[1];
+    return (buffer[1] >> 5) == 2;
+  }
+  return false;
+}
+
+// {[leafSid, key]: <unsigned>}
+size_t buildPatchUint(uint8_t *out, uint32_t leafSid, const char *key, uint64_t value) {
+  size_t n = 0;
+  n += cborUint(out + n, 1, 5);
+  n += cborUint(out + n, 2, 4);
+  n += cborUint(out + n, leafSid, 0);
+  const size_t keyLength = strlen(key);
+  n += cborUint(out + n, keyLength, 3);
+  memcpy(out + n, key, keyLength);
+  n += keyLength;
+  n += cborUint(out + n, value, 0);
+  return n;
+}
+
+// {[leafSid, key]: <bool>}
+size_t buildPatchBool(uint8_t *out, uint32_t leafSid, const char *key, bool value) {
+  size_t n = 0;
+  n += cborUint(out + n, 1, 5);
+  n += cborUint(out + n, 2, 4);
+  n += cborUint(out + n, leafSid, 0);
+  const size_t keyLength = strlen(key);
+  n += cborUint(out + n, keyLength, 3);
+  memcpy(out + n, key, keyLength);
+  n += keyLength;
+  out[n++] = value ? 0xF5 : 0xF4;
+  return n;
+}
+
 // Writes one leaf of one list entry: iPATCH with a payload of {[leafSid, key]: value}.
 //
 // The shape came from the device, not from a guess. The first attempt addressed the list entry

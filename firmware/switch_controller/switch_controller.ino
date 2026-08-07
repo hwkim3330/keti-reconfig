@@ -91,6 +91,28 @@ uint32_t sequenceNumber = 0;
 // to fall out of step -- on the LAN9662 bench rig this was port 1, on the LAN9692 it is 12.
 static const char *kProtectedPort = "12";
 
+struct GateWindowSpec { uint8_t mask; uint32_t intervalNs; };
+
+// Schedules the console can ask for. Kept here rather than sent over BLE as raw entries: the
+// controller owns the SID table and is the only thing that checked the catalog, so it is the
+// only thing entitled to compose a write.
+struct SchedulePreset {
+  const char *id;
+  uint32_t cycleNumerator;
+  uint32_t cycleDenominator;
+  int windowCount;
+  GateWindowSpec windows[4];
+};
+static const SchedulePreset kPresets[] = {
+    {"tc7", 1, 1000, 2, {{0x80, 500000}, {0xFF, 500000}}},
+    {"strict", 1, 1000, 3, {{0x80, 250000}, {0x40, 250000}, {0xFF, 500000}}},
+    {"fast", 1, 5000, 2, {{0x80, 100000}, {0xFF, 100000}}},
+};
+
+volatile bool pendingScheduleWrite = false;
+String pendingSchedulePort;
+String pendingScheduleId;
+
 volatile bool pendingPortWrite = false;
 bool pendingPortEnable = false;
 String pendingPort;
@@ -153,6 +175,19 @@ class ControlCallbacks final : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
     String command = characteristic->getValue();
     command.trim();
+    // !SCHED:<port>:<preset|off>
+    if (command.startsWith("!SCHED:")) {
+      const int separator = command.indexOf(':', 7);
+      if (separator < 0) return;
+      if (!catalogMatches) {
+        notifyLine("!ACK:SCHED:REFUSED:catalog mismatch");
+        return;
+      }
+      pendingSchedulePort = command.substring(7, separator);
+      pendingScheduleId = command.substring(separator + 1);
+      pendingScheduleWrite = true;
+      return;
+    }
     // !PORT:<name>:<UP|DOWN>
     if (!command.startsWith("!PORT:")) return;
     const int separator = command.indexOf(':', 6);
@@ -286,6 +321,79 @@ void loop() {
         Serial.println("  machine string not found");
       }
     }
+  }
+
+  if (pendingScheduleWrite) {
+    pendingScheduleWrite = false;
+    const char *port = pendingSchedulePort.c_str();
+    const char *base = "ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/"
+                       "ieee802-dot1q-sched-bridge:gate-parameter-table";
+    char path[220];
+    uint8_t buffer[192];
+    uint8_t patchCode = 0;
+    bool ok = true;
+
+    if (pendingScheduleId == "off") {
+      snprintf(path, sizeof(path), "%s/gate-enabled", base);
+      ok = patchRaw(buffer, buildPatchBool(buffer, ketiSidFor(path), port, false), &patchCode);
+      snprintf(path, sizeof(path), "%s/config-change", base);
+      ok = patchRaw(buffer, buildPatchBool(buffer, ketiSidFor(path), port, true), &patchCode) && ok;
+    } else {
+      const SchedulePreset *preset = nullptr;
+      for (const auto &p : kPresets) {
+        if (pendingScheduleId == p.id) preset = &p;
+      }
+      if (preset == nullptr) {
+        notifyLine("!ACK:SCHED:REFUSED:unknown preset");
+        ok = false;
+      } else {
+        // The control list, then the cycle, then enable, then the change trigger -- the order
+        // the CLI uses. config-change last is what makes the switch adopt the admin list.
+        size_t n = 0;
+        n += cborUint(buffer + n, 1, 5);
+        n += cborUint(buffer + n, 2, 4);
+        snprintf(path, sizeof(path), "%s/admin-control-list/gate-control-entry", base);
+        n += cborUint(buffer + n, ketiSidFor(path), 0);
+        const size_t keyLength = strlen(port);
+        n += cborUint(buffer + n, keyLength, 3);
+        memcpy(buffer + n, port, keyLength);
+        n += keyLength;
+        n += cborUint(buffer + n, preset->windowCount, 4);
+        for (int i = 0; i < preset->windowCount; ++i) {
+          n += cborUint(buffer + n, 4, 5);       // map of four leaves
+          n += cborUint(buffer + n, 2, 0);       // delta 2 -> index
+          n += cborUint(buffer + n, i, 0);
+          n += cborUint(buffer + n, 3, 0);       // delta 3 -> operation-name
+          n += cborUint(buffer + n, 23003, 0);   // identity: set-gate-states
+          n += cborUint(buffer + n, 4, 0);       // delta 4 -> time-interval-value
+          n += cborUint(buffer + n, preset->windows[i].intervalNs, 0);
+          n += cborUint(buffer + n, 1, 0);       // delta 1 -> gate-states-value
+          n += cborUint(buffer + n, preset->windows[i].mask, 0);
+        }
+        ok = patchRaw(buffer, n, &patchCode);
+
+        snprintf(path, sizeof(path), "%s/admin-cycle-time/numerator", base);
+        ok = patchRaw(buffer, buildPatchUint(buffer, ketiSidFor(path), port,
+                                             preset->cycleNumerator), &patchCode) && ok;
+        snprintf(path, sizeof(path), "%s/admin-cycle-time/denominator", base);
+        ok = patchRaw(buffer, buildPatchUint(buffer, ketiSidFor(path), port,
+                                             preset->cycleDenominator), &patchCode) && ok;
+        snprintf(path, sizeof(path), "%s/gate-enabled", base);
+        ok = patchRaw(buffer, buildPatchBool(buffer, ketiSidFor(path), port, true),
+                      &patchCode) && ok;
+        snprintf(path, sizeof(path), "%s/config-change", base);
+        ok = patchRaw(buffer, buildPatchBool(buffer, ketiSidFor(path), port, true),
+                      &patchCode) && ok;
+      }
+    }
+
+    Serial.printf("schedule %s -> %s: %s (last code %d.%02d)\n", port,
+                  pendingScheduleId.c_str(), ok ? "accepted" : "rejected", patchCode >> 5,
+                  patchCode & 0x1F);
+    char ack[96];
+    snprintf(ack, sizeof(ack), "!ACK:SCHED:%s:%s:%d.%02d", port, ok ? "OK" : "FAIL",
+             patchCode >> 5, patchCode & 0x1F);
+    notifyLine(ack);
   }
 
   if (pendingPortWrite) {

@@ -507,6 +507,12 @@ class KetiLinkService {
   /// Asks the controller to enable or disable a switch port. The console deliberately does not
   /// know any SIDs: the controller owns the generated table and is the only thing that checked
   /// the device's catalog, so it is the only thing entitled to write.
+  /// Applies one of the controller's built-in gate schedules, or turns gating off. The console
+  /// names a preset rather than sending entries: the controller owns the SID table and is the
+  /// only thing that verified the catalog, so it is the only thing entitled to compose a write.
+  Future<bool> setSchedule(KetiDevice which, String port, String preset) =>
+      sendPath(which, '!SCHED:$port:$preset');
+
   Future<bool> setPortEnabled(KetiDevice which, String port, bool enabled) {
     return sendPath(which, '!PORT:$port:${enabled ? 'UP' : 'DOWN'}');
   }

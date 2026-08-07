@@ -895,6 +895,9 @@ class _SwitchPanel extends ConsumerWidget {
           protected: selected.name == snapshot.protectedPort,
           stale: !fresh,
           tas: state.tas[active]?[selected.name],
+          onSetSchedule: (preset) => ref
+              .read(ketiLinkServiceProvider)
+              .setSchedule(active, selected.name, preset),
           onBack: () => onSelectPort(null),
           onSetEnabled: (enabled) => ref
               .read(ketiLinkServiceProvider)
@@ -1192,6 +1195,7 @@ class _PortInspector extends StatelessWidget {
     required this.tas,
     required this.onBack,
     required this.onSetEnabled,
+    required this.onSetSchedule,
   });
 
   final bool wide;
@@ -1204,6 +1208,7 @@ class _PortInspector extends StatelessWidget {
   final TasSnapshot? tas;
   final VoidCallback onBack;
   final void Function(bool) onSetEnabled;
+  final void Function(String preset) onSetSchedule;
 
   @override
   Widget build(BuildContext context) {
@@ -1305,6 +1310,33 @@ class _PortInspector extends StatelessWidget {
             _GateTimeline(windows: tas!.windows),
           ],
         ],
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in _kPresets)
+              GestureDetector(
+                onTap: stale ? null : () => onSetSchedule(preset.id),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE3E8EF)),
+                  ),
+                  child: Text(preset.label,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: stale
+                              ? const Color(0xFFC3C9D4)
+                              : const Color(0xFF2563EB))),
+                ),
+              ),
+          ],
+        ),
       ],
       ),
     );
@@ -1349,11 +1381,21 @@ class _GateTimeline extends StatelessWidget {
         if (windows.any((w) => w.isOpen(tc))) used.add(tc);
       }
     }
+    // Cap the rows. A schedule that gates seven classes identically draws seven identical
+    // bars, which is height without information -- the distinct shapes are what matter.
+    final seen = <String>{};
+    final distinct = <int>[];
+    for (final tc in used) {
+      final shape = windows.map((w) => w.isOpen(tc) ? '1' : '0').join();
+      if (seen.add(shape)) distinct.add(tc);
+    }
+    final rows = distinct.take(4).toList();
+    final hidden = used.length - rows.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final tc in used)
+        for (final tc in rows)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Row(
@@ -1388,6 +1430,11 @@ class _GateTimeline extends StatelessWidget {
               ],
             ),
           ),
+        if (hidden > 0)
+          Padding(
+            padding: const EdgeInsets.only(left: 30, bottom: 3),
+            child: Text('+$hidden more classes follow the same windows', style: _kMuted),
+          ),
         const SizedBox(height: 3),
         Row(
           children: [
@@ -1410,6 +1457,22 @@ class _GateTimeline extends StatelessWidget {
     );
   }
 }
+
+/// The schedules the controller knows. Named here only for the label -- the controller holds
+/// the actual windows, because it is the side that verified the catalog.
+class _Preset {
+  const _Preset(this.id, this.label);
+
+  final String id;
+  final String label;
+}
+
+const _kPresets = [
+  _Preset('tc7', 'TC7 1 ms'),
+  _Preset('strict', 'Strict 1 ms'),
+  _Preset('fast', 'TC7 200 us'),
+  _Preset('off', 'No gating'),
+];
 
 class _WidenButton extends StatelessWidget {
   const _WidenButton({required this.wide, required this.onTap});
