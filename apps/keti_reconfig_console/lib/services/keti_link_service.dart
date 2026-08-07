@@ -93,6 +93,7 @@ class TasSnapshot {
     required this.enabled,
     required this.cycleNs,
     required this.gateStates,
+    this.windows = const [],
     required this.receivedAt,
   });
 
@@ -100,7 +101,18 @@ class TasSnapshot {
   final bool enabled;
   final int cycleNs;
   final int gateStates;
+  final List<GateWindow> windows;
   final DateTime receivedAt;
+}
+
+/// One window of the gate control list: which traffic classes are open, and for how long.
+class GateWindow {
+  const GateWindow(this.mask, this.nanoseconds);
+
+  final int mask;
+  final int nanoseconds;
+
+  bool isOpen(int trafficClass) => (mask >> trafficClass) & 1 == 1;
 }
 
 class PathSnapshot {
@@ -304,6 +316,8 @@ class KetiLinkService {
       _onSwitchHeader(line);
     } else if (line.startsWith('!PORT:')) {
       _onPort(line);
+    } else if (line.startsWith('!GCL:')) {
+      _onGcl(line);
     } else if (line.startsWith('!TAS:')) {
       _onTas(line);
     } else if (line.startsWith('!PLATFORM:')) {
@@ -355,6 +369,38 @@ class KetiLinkService {
         enabled: f[3] == 'ON',
         cycleNs: int.tryParse(f[4]) ?? 0,
         gateStates: int.tryParse(f[5]) ?? 0,
+        receivedAt: DateTime.now(),
+      ),
+    });
+    _emit();
+  }
+
+  /// Windows arrive separately from the rest of the gate parameters, so they are merged onto
+  /// whatever TAS snapshot is already held for that port rather than replacing it.
+  void _onGcl(String line) {
+    // !GCL:<seq>:<port>:<mask>,<ns>;<mask>,<ns>;...
+    final f = line.split(':');
+    if (f.length < 4) return;
+    final port = f[2];
+    final windows = <GateWindow>[];
+    for (final chunk in f[3].split(';')) {
+      final parts = chunk.split(',');
+      if (parts.length != 2) continue;
+      final mask = int.tryParse(parts[0]);
+      final ns = int.tryParse(parts[1]);
+      if (mask == null || ns == null) continue;
+      windows.add(GateWindow(mask, ns));
+    }
+    final existing = _state.tas[port];
+    if (existing == null) return;
+    _state = _state.copyWith(tas: {
+      ..._state.tas,
+      port: TasSnapshot(
+        port: port,
+        enabled: existing.enabled,
+        cycleNs: existing.cycleNs,
+        gateStates: existing.gateStates,
+        windows: windows,
         receivedAt: DateTime.now(),
       ),
     });

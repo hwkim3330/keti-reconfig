@@ -70,6 +70,11 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   void _selectPort(String? name) => setState(() => _selectedPort = name);
   bool _rightVisible = true;
 
+  /// The inspector widens rather than only scrolling. Per-port TSN configuration is long --
+  /// a gate schedule alone is taller than the panel -- and reading it through a narrow slit
+  /// is worse than giving it room. The model stays visible either way.
+  bool _rightWide = false;
+
   /// A scenario is just the fault state each path should end up in. Kept as data rather than
   /// as a sequence of taps so the console can say what it asked for and, separately, what the
   /// modules reported back.
@@ -262,13 +267,15 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
               right: 14,
               top: 76,
               bottom: 14,
-              width: 336,
+              width: _rightWide ? 620 : 336,
               child: _SwitchPanel(
                 state: state,
                 rates: _rates,
                 history: _history,
                 selectedPort: _selectedPort,
                 onSelectPort: _selectPort,
+                wide: _rightWide,
+                onToggleWide: () => setState(() => _rightWide = !_rightWide),
               ),
             ),
           Positioned(
@@ -822,6 +829,8 @@ class _SwitchPanel extends ConsumerWidget {
     required this.history,
     required this.selectedPort,
     required this.onSelectPort,
+    required this.wide,
+    required this.onToggleWide,
   });
 
   final KetiState state;
@@ -829,6 +838,8 @@ class _SwitchPanel extends ConsumerWidget {
   final Map<String, List<double>> history;
   final String? selectedPort;
   final void Function(String?) onSelectPort;
+  final bool wide;
+  final VoidCallback onToggleWide;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -842,6 +853,8 @@ class _SwitchPanel extends ConsumerWidget {
     if (selected != null && snapshot != null) {
       return _Glass(
         child: _PortInspector(
+          wide: wide,
+          onToggleWide: onToggleWide,
           port: selected,
           kbps: rates[selected.name],
           history: history[selected.name] ?? const [],
@@ -859,9 +872,16 @@ class _SwitchPanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            snapshot?.platform.isNotEmpty == true ? snapshot!.platform : 'TSN switch',
-            style: _kPanelTitle,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  snapshot?.platform.isNotEmpty == true ? snapshot!.platform : 'TSN switch',
+                  style: _kPanelTitle,
+                ),
+              ),
+              _WidenButton(wide: wide, onTap: onToggleWide),
+            ],
           ),
           const SizedBox(height: 6),
           if (!connected)
@@ -1097,6 +1117,8 @@ class _PortRow extends StatelessWidget {
 /// dialog stacked over the live view.
 class _PortInspector extends StatelessWidget {
   const _PortInspector({
+    required this.wide,
+    required this.onToggleWide,
     required this.port,
     required this.kbps,
     required this.history,
@@ -1107,6 +1129,8 @@ class _PortInspector extends StatelessWidget {
     required this.onSetEnabled,
   });
 
+  final bool wide;
+  final VoidCallback onToggleWide;
   final SwitchPort port;
   final double? kbps;
   final List<double> history;
@@ -1118,20 +1142,32 @@ class _PortInspector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    // Scrollable: with a schedule drawn out the inspector is taller than the panel, and a
+    // clipped timeline is worse than one that scrolls.
+    return SingleChildScrollView(
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: onBack,
-          behavior: HitTestBehavior.opaque,
-          child: const Row(
-            children: [
-              Icon(Icons.chevron_left_rounded, size: 20, color: Color(0xFF2563EB)),
-              Text('Switch',
-                  style: TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF2563EB))),
-            ],
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: onBack,
+                behavior: HitTestBehavior.opaque,
+                child: const Row(
+                  children: [
+                    Icon(Icons.chevron_left_rounded, size: 20, color: Color(0xFF2563EB)),
+                    Text('Switch',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2563EB))),
+                  ],
+                ),
+              ),
+            ),
+            _WidenButton(wide: wide, onTap: onToggleWide),
+          ],
         ),
         const SizedBox(height: 10),
         Text(port.name.length > 2 ? port.name : 'Port ${port.name}', style: _kPanelTitle),
@@ -1199,9 +1235,13 @@ class _PortInspector extends StatelessWidget {
           _Stat('Gate control', tas!.enabled ? 'Enabled' : 'Disabled',
               tas!.cycleNs == 0 ? 'no cycle set' : '${tas!.cycleNs / 1000} us cycle'),
           _Stat('Gates open', _gateList(tas!.gateStates), ''),
+          if (tas!.windows.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _GateTimeline(windows: tas!.windows),
+          ],
         ],
-        const Spacer(),
       ],
+      ),
     );
   }
 }
@@ -1216,6 +1256,117 @@ String _gateList(int mask) {
     if ((mask >> tc) & 1 == 1) open.add('TC$tc');
   }
   return open.isEmpty ? 'none' : open.join(' ');
+}
+
+/// One cycle of the gate control list, drawn as a row per traffic class.
+///
+/// This is the picture the whole demo is about: RECON swaps these schedules when a link fails,
+/// and a table of numbers does not show that happening. Widths are proportional to each
+/// window's duration, so the shape is the schedule.
+class _GateTimeline extends StatelessWidget {
+  const _GateTimeline({required this.windows});
+
+  final List<GateWindow> windows;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = windows.fold<int>(0, (sum, w) => sum + w.nanoseconds);
+    if (total <= 0) return const SizedBox.shrink();
+
+    // Only the classes that are ever gated. Drawing eight rows when a schedule touches two
+    // buries the two that matter.
+    final used = <int>[];
+    for (var tc = 7; tc >= 0; --tc) {
+      if (windows.any((w) => w.isOpen(tc)) && windows.any((w) => !w.isOpen(tc))) used.add(tc);
+    }
+    if (used.isEmpty) {
+      for (var tc = 7; tc >= 0; --tc) {
+        if (windows.any((w) => w.isOpen(tc))) used.add(tc);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final tc in used)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 30,
+                  child: Text('TC$tc',
+                      style: const TextStyle(
+                          fontSize: 10.5, fontWeight: FontWeight.w600,
+                          color: Color(0xFF9AA3B2))),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: Row(
+                      children: [
+                        for (final w in windows)
+                          Expanded(
+                            flex: w.nanoseconds,
+                            child: Container(
+                              height: 13,
+                              margin: const EdgeInsets.only(right: 1),
+                              color: w.isOpen(tc)
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFFE9EDF3),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            const SizedBox(width: 30),
+            Expanded(
+              child: Row(
+                children: [
+                  for (final w in windows)
+                    Expanded(
+                      flex: w.nanoseconds,
+                      child: Text('${w.nanoseconds ~/ 1000}us',
+                          style: const TextStyle(fontSize: 9.5, color: Color(0xFFAAB2BF))),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _WidenButton extends StatelessWidget {
+  const _WidenButton({required this.wide, required this.onTap});
+
+  final bool wide;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8, top: 2, bottom: 2),
+        child: Icon(
+          wide ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
+          size: 16,
+          color: const Color(0xFF9AA3B2),
+        ),
+      ),
+    );
+  }
 }
 
 class _Stat extends StatelessWidget {

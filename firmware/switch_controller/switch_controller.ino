@@ -132,6 +132,17 @@ void publishSnapshot(const PortTable &table, bool linkUp) {
       snprintf(line, sizeof(line), "!TAS:%lu:%s:%s:%llu:%llu", (unsigned long)sequenceNumber,
                p.name, p.gateEnabled ? "ON" : "OFF", cycleNs, p.gateStates);
       notifyLine(line);
+      if (p.gateCount > 0) {
+        // !GCL:<seq>:<port>:<mask>,<ns>;<mask>,<ns>;...
+        char gcl[192];
+        int used = snprintf(gcl, sizeof(gcl), "!GCL:%lu:%s:", (unsigned long)sequenceNumber,
+                            p.name);
+        for (int g = 0; g < p.gateCount && used < int(sizeof(gcl)) - 24; ++g) {
+          used += snprintf(gcl + used, sizeof(gcl) - used, "%s%u,%llu", g == 0 ? "" : ";",
+                           p.gateMask[g], p.gateInterval[g]);
+        }
+        notifyLine(gcl);
+      }
     }
   }
 }

@@ -30,6 +30,14 @@ struct PortState {
   // 4.00, so per-port fetches are not available on this transport at all -- see the README.
   bool tasSeen;
   uint64_t gateEnabled, gateStates, cycleNumerator, cycleDenominator;
+
+  // One cycle of the gate control list. Eight windows is more than the demo schedules use and
+  // keeps the whole port table in static memory.
+  static constexpr int kMaxGates = 8;
+  int gateCount;
+  int gateSlot;                       // entry currently being filled, -1 if out of range
+  uint64_t gateInterval[kMaxGates];   // nanoseconds
+  uint8_t gateMask[kMaxGates];        // one bit per traffic class
 };
 
 struct PortTable {
@@ -197,6 +205,28 @@ inline void coreconfValue(CborCursor &c, uint32_t sid, PortTable *table, int por
     if (sid == ketiSidFor(path)) { port->cycleNumerator = value; port->tasSeen = true; return; }
     snprintf(path, sizeof(path), "%s/admin-cycle-time/denominator", kGateBase);
     if (sid == ketiSidFor(path)) { port->cycleDenominator = value; port->tasSeen = true; return; }
+
+    // Gate control entries arrive as a list of maps. Nothing in the encoding announces "new
+    // entry", so the index leaf is what separates them -- the device sends it first in each.
+    snprintf(path, sizeof(path), "%s/admin-control-list/gate-control-entry/index", kGateBase);
+    if (sid == ketiSidFor(path)) {
+      port->gateSlot = int(value) < PortState::kMaxGates ? int(value) : -1;
+      if (port->gateSlot >= 0) port->gateCount = max(port->gateCount, port->gateSlot + 1);
+      port->tasSeen = true;
+      return;
+    }
+    snprintf(path, sizeof(path),
+             "%s/admin-control-list/gate-control-entry/time-interval-value", kGateBase);
+    if (sid == ketiSidFor(path)) {
+      if (port->gateSlot >= 0) port->gateInterval[port->gateSlot] = value;
+      return;
+    }
+    snprintf(path, sizeof(path),
+             "%s/admin-control-list/gate-control-entry/gate-states-value", kGateBase);
+    if (sid == ketiSidFor(path)) {
+      if (port->gateSlot >= 0) port->gateMask[port->gateSlot] = uint8_t(value);
+      return;
+    }
     return;
   }
 
