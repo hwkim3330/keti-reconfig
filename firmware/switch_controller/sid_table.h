@@ -48,9 +48,13 @@ static const KetiSidEntry kKetiSidTable[] = {
     {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-control-list/gate-control-entry/gate-states-value", 23107u},
     {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-control-list/gate-control-entry/operation-name", 23109u},
     {"ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/config-change", 23116u},
+    {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/speed", 5025u},
+    {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-fcs-frames", 5029u},
+    {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-oversize-frames", 5031u},
+    {"ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-undersize-frames", 5032u},
 };
 
-static constexpr int kKetiSidCount = 29;
+static constexpr int kKetiSidCount = 33;
 
 inline uint32_t ketiSidFor(const char *path) {
   for (int i = 0; i < kKetiSidCount; ++i) {

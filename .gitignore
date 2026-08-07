@@ -4,3 +4,5 @@ node_modules/
 .dart_tool/
 .gradle/
 *.iml
+.kotlin/
+docs/

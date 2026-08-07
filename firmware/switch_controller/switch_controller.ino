@@ -166,7 +166,17 @@ void publishSnapshot(const PortTable &table, bool linkUp) {
              p.inOctets, p.outOctets, p.inUnicast, p.outUnicast, p.inErrors, p.outErrors,
              p.inDiscards, p.outDiscards);
     notifyLine(line);
-    if (p.tasSeen) {
+    // Only ports with something to say. A snapshot was reaching forty notifications across
+    // thirteen ports, each paced by 6 ms, and the tail of that burst was being dropped -- the
+    // speed line simply never arrived. A down port has no speed, no traffic and, unless it is
+    // scheduled, nothing to report.
+    if (p.operStatus == 1 || p.fcsErrors || p.oversizeFrames || p.undersizeFrames) {
+      snprintf(line, sizeof(line), "!ETH:%lu:%s:%lu:%llu:%llu:%llu",
+               (unsigned long)sequenceNumber, p.name, (unsigned long)p.speedMbps, p.fcsErrors,
+               p.oversizeFrames, p.undersizeFrames);
+      notifyLine(line);
+    }
+    if (p.tasSeen && (p.gateEnabled || p.gateCount > 0)) {
       const uint64_t cycleNs = p.cycleDenominator == 0
                                    ? 0
                                    : (p.cycleNumerator * 1000000000ULL) / p.cycleDenominator;
@@ -458,9 +468,10 @@ void loop() {
         Serial.printf("  %d port(s) discovered\n", table.count);
         for (int i = 0; i < table.count; ++i) {
           const PortState &p = table.ports[i];
-          Serial.printf("   port %-4s %-6s in %llu B / %llu pkt   out %llu B / %llu pkt   "
+          Serial.printf("   port %-4s %-6s %lu Mbps  in %llu B / %llu pkt   out %llu B / %llu pkt   "
                         "err %llu/%llu  disc %llu/%llu  %s\n",
-                        p.name, p.operStatus == 1 ? "UP" : "DOWN", p.inOctets, p.inUnicast,
+                        p.name, p.operStatus == 1 ? "UP" : "DOWN",
+                        (unsigned long)p.speedMbps, p.inOctets, p.inUnicast,
                         p.outOctets, p.outUnicast, p.inErrors, p.outErrors, p.inDiscards,
                         p.outDiscards, p.physAddress);
         }

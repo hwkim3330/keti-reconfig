@@ -120,6 +120,24 @@ class TasSnapshot {
 }
 
 /// One window of the gate control list: which traffic classes are open, and for how long.
+/// Physical-layer facts about a port: what it negotiated, and frames the MAC threw away.
+/// A demo that only shows a link as up or down cannot show a link that is up and bad.
+class EthSnapshot {
+  const EthSnapshot({
+    required this.speedMbps,
+    required this.fcsErrors,
+    required this.oversize,
+    required this.undersize,
+  });
+
+  final int speedMbps;
+  final int fcsErrors;
+  final int oversize;
+  final int undersize;
+
+  bool get healthy => fcsErrors == 0 && oversize == 0 && undersize == 0;
+}
+
 class GateWindow {
   const GateWindow(this.mask, this.nanoseconds);
 
@@ -154,6 +172,7 @@ class KetiState {
     this.switches = const {},
     this.pathSnapshots = const {},
     this.tas = const {},
+    this.eth = const {},
     this.scanning = false,
   });
 
@@ -161,6 +180,7 @@ class KetiState {
   final Map<KetiDevice, SwitchSnapshot> switches;
   final Map<int, PathSnapshot> pathSnapshots;
   final Map<KetiDevice, Map<String, TasSnapshot>> tas;
+  final Map<KetiDevice, Map<String, EthSnapshot>> eth;
 
   /// The switches that have ever reported, in device order. One switch is the common case and
   /// the console shows no selector for it.
@@ -173,6 +193,7 @@ class KetiState {
     Map<KetiDevice, SwitchSnapshot>? switches,
     Map<int, PathSnapshot>? pathSnapshots,
     Map<KetiDevice, Map<String, TasSnapshot>>? tas,
+    Map<KetiDevice, Map<String, EthSnapshot>>? eth,
     bool? scanning,
   }) {
     return KetiState(
@@ -180,6 +201,7 @@ class KetiState {
       switches: switches ?? this.switches,
       pathSnapshots: pathSnapshots ?? this.pathSnapshots,
       tas: tas ?? this.tas,
+      eth: eth ?? this.eth,
       scanning: scanning ?? this.scanning,
     );
   }
@@ -332,6 +354,8 @@ class KetiLinkService {
       _onSwitchHeader(which, line);
     } else if (line.startsWith('!PORT:')) {
       _onPort(which, line);
+    } else if (line.startsWith('!ETH:')) {
+      _onEth(which, line);
     } else if (line.startsWith('!GCL:')) {
       _onGcl(which, line);
     } else if (line.startsWith('!TAS:')) {
@@ -422,6 +446,26 @@ class KetiLinkService {
           gateStates: existing.gateStates,
           windows: windows,
           receivedAt: DateTime.now(),
+        ),
+      },
+    });
+    _emit();
+  }
+
+  void _onEth(KetiDevice which, String line) {
+    // !ETH:<seq>:<port>:<speedMbps>:<fcs>:<oversize>:<undersize>
+    final f = line.split(':');
+    if (f.length < 7) return;
+    int at(int i) => int.tryParse(f[i]) ?? 0;
+    _state = _state.copyWith(eth: {
+      ..._state.eth,
+      which: {
+        ...(_state.eth[which] ?? const {}),
+        f[2]: EthSnapshot(
+          speedMbps: at(3),
+          fcsErrors: at(4),
+          oversize: at(5),
+          undersize: at(6),
         ),
       },
     });

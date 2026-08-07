@@ -34,6 +34,9 @@ struct PortState {
   // One cycle of the gate control list. Eight windows is more than the demo schedules use and
   // keeps the whole port table in static memory.
   static constexpr int kMaxGates = 8;
+  uint64_t fcsErrors, oversizeFrames, undersizeFrames;
+  uint32_t speedMbps;   // 0 when the device did not report one
+
   int gateCount;
   int gateSlot;                       // entry currently being filled, -1 if out of range
   uint64_t gateInterval[kMaxGates];   // nanoseconds
@@ -195,6 +198,16 @@ inline void coreconfValue(CborCursor &c, uint32_t sid, PortTable *table, int por
       port->operStatus = uint8_t(value);
       return;
     }
+    static const char *kEthBase =
+        "ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet";
+    char ethPath[200];
+    snprintf(ethPath, sizeof(ethPath), "%s/statistics/frame/in-error-fcs-frames", kEthBase);
+    if (sid == ketiSidFor(ethPath)) { port->fcsErrors = value; return; }
+    snprintf(ethPath, sizeof(ethPath), "%s/statistics/frame/in-error-oversize-frames", kEthBase);
+    if (sid == ketiSidFor(ethPath)) { port->oversizeFrames = value; return; }
+    snprintf(ethPath, sizeof(ethPath), "%s/statistics/frame/in-error-undersize-frames", kEthBase);
+    if (sid == ketiSidFor(ethPath)) { port->undersizeFrames = value; return; }
+
     static const char *kGateBase =
         "ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/"
         "ieee802-dot1q-sched-bridge:gate-parameter-table";
@@ -252,6 +265,34 @@ inline void coreconfValue(CborCursor &c, uint32_t sid, PortTable *table, int por
     if (sid == ketiSidFor(path)) {
       port->gateEnabled = value == 21 ? 1 : 0;
       port->tasSeen = true;
+    }
+    return;
+  }
+
+  // Speed is a decimal64, which arrives as CBOR tag 4: [exponent, mantissa]. Skipping tags
+  // wholesale would silently drop it, and a port list without link speeds hides a 100M port
+  // sitting in a gigabit ring.
+  if (major == 6 && value == 4 && port != nullptr &&
+      sid == ketiSidFor("ietf-interfaces:interfaces/interface/"
+                        "ieee802-ethernet-interface:ethernet/speed")) {
+    uint8_t innerMajor = 0;
+    uint64_t count = 0;
+    bool innerIndefinite = false, innerBreak = false;
+    if (cborHead(c, innerMajor, count, innerIndefinite, innerBreak) && innerMajor == 4 &&
+        count == 2) {
+      uint8_t expMajor = 0, mantMajor = 0;
+      uint64_t expValue = 0, mantValue = 0;
+      bool ignoredA = false, ignoredB = false, breakA = false, breakB = false;
+      if (cborHead(c, expMajor, expValue, ignoredA, breakA) &&
+          cborHead(c, mantMajor, mantValue, ignoredB, breakB)) {
+        // Reported in Gbps, so 0.1 is a 100 Mbps link. Negative exponents arrive as CBOR
+        // negative integers, where the encoded value is -(n+1).
+        const int64_t exponent = expMajor == 1 ? -int64_t(expValue) - 1 : int64_t(expValue);
+        double gbps = double(mantValue);
+        for (int64_t i = 0; i < -exponent; ++i) gbps /= 10.0;
+        for (int64_t i = 0; i < exponent; ++i) gbps *= 10.0;
+        port->speedMbps = uint32_t(gbps * 1000.0 + 0.5);
+      }
     }
     return;
   }

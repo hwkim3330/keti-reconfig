@@ -64,3 +64,11 @@
 # admin list.
 - "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/admin-control-list/gate-control-entry/operation-name"
 - "/ietf-interfaces:interfaces/interface/ieee802-dot1q-bridge:bridge-port/ieee802-dot1q-sched-bridge:gate-parameter-table/config-change"
+
+# Already inside the interface subtree, so reading these costs nothing extra. Error frames are
+# what a network demo needs to show when something is actually wrong, rather than only when a
+# link is down.
+- "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/speed"
+- "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-fcs-frames"
+- "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-oversize-frames"
+- "/ietf-interfaces:interfaces/interface/ieee802-ethernet-interface:ethernet/statistics/frame/in-error-undersize-frames"

@@ -910,6 +910,7 @@ class _SwitchPanel extends ConsumerWidget {
           protected: selected.name == snapshot.protectedPort,
           stale: !fresh,
           tas: state.tas[active]?[selected.name],
+          eth: state.eth[active]?[selected.name],
           onSetSchedule: (preset) => ref
               .read(ketiLinkServiceProvider)
               .setSchedule(active, selected.name, preset),
@@ -1208,6 +1209,7 @@ class _PortInspector extends StatelessWidget {
     required this.protected,
     required this.stale,
     required this.tas,
+    required this.eth,
     required this.onBack,
     required this.onSetEnabled,
     required this.onSetSchedule,
@@ -1221,6 +1223,7 @@ class _PortInspector extends StatelessWidget {
   final bool protected;
   final bool stale;
   final TasSnapshot? tas;
+  final EthSnapshot? eth;
   final VoidCallback onBack;
   final void Function(bool) onSetEnabled;
   final void Function(String preset) onSetSchedule;
@@ -1259,6 +1262,7 @@ class _PortInspector extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           '${port.up ? "Link up" : "Link down"}'
+          '${eth != null && eth!.speedMbps > 0 ? "  ·  ${eth!.speedMbps} Mbps" : ""}'
           '${protected ? "  ·  controller uplink" : ""}',
           style: _kMuted,
         ),
@@ -1287,6 +1291,11 @@ class _PortInspector extends StatelessWidget {
         _Stat('Out', '${port.outOctets} B', '${port.outUnicast} unicast'),
         _Stat('Errors', '${port.inErrors} in', '${port.outErrors} out'),
         _Stat('Discards', '${port.inDiscards} in', '${port.outDiscards} out'),
+        // Frames the MAC threw away. A console that only shows a link as up or down
+        // cannot show a link that is up and bad, which is the more interesting failure.
+        if (eth != null && !eth!.healthy)
+          _Stat('Bad frames', '${eth!.fcsErrors} FCS',
+              '${eth!.oversize} over, ${eth!.undersize} under'),
         const SizedBox(height: 18),
         const Text('Configuration', style: _kSectionTitle),
         const SizedBox(height: 8),
