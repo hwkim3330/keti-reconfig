@@ -20,3 +20,16 @@
 - "/ietf-interfaces:interfaces/interface/name"
 - "/ietf-interfaces:interfaces/interface/oper-status"
 - "/ietf-interfaces:interfaces/interface/statistics"
+
+# Counter leaves the dashboard graphs. Named individually because the firmware decodes the
+# response by SID: it matches these numbers against the delta-encoded keys on the wire, and
+# anything it has no SID for it simply skips.
+- "/ietf-interfaces:interfaces/interface/phys-address"
+- "/ietf-interfaces:interfaces/interface/statistics/in-octets"
+- "/ietf-interfaces:interfaces/interface/statistics/out-octets"
+- "/ietf-interfaces:interfaces/interface/statistics/in-errors"
+- "/ietf-interfaces:interfaces/interface/statistics/out-errors"
+- "/ietf-interfaces:interfaces/interface/statistics/in-discards"
+- "/ietf-interfaces:interfaces/interface/statistics/out-discards"
+- "/ietf-interfaces:interfaces/interface/statistics/in-unicast-pkts"
+- "/ietf-interfaces:interfaces/interface/statistics/out-unicast-pkts"

@@ -25,9 +25,18 @@ static const KetiSidEntry kKetiSidTable[] = {
     {"ietf-interfaces:interfaces/interface/name", 2042u},
     {"ietf-interfaces:interfaces/interface/oper-status", 2043u},
     {"ietf-interfaces:interfaces/interface/statistics", 2046u},
+    {"ietf-interfaces:interfaces/interface/phys-address", 2044u},
+    {"ietf-interfaces:interfaces/interface/statistics/in-octets", 2052u},
+    {"ietf-interfaces:interfaces/interface/statistics/out-octets", 2059u},
+    {"ietf-interfaces:interfaces/interface/statistics/in-errors", 2050u},
+    {"ietf-interfaces:interfaces/interface/statistics/out-errors", 2057u},
+    {"ietf-interfaces:interfaces/interface/statistics/in-discards", 2049u},
+    {"ietf-interfaces:interfaces/interface/statistics/out-discards", 2056u},
+    {"ietf-interfaces:interfaces/interface/statistics/in-unicast-pkts", 2053u},
+    {"ietf-interfaces:interfaces/interface/statistics/out-unicast-pkts", 2060u},
 };
 
-static constexpr int kKetiSidCount = 6;
+static constexpr int kKetiSidCount = 15;
 
 inline uint32_t ketiSidFor(const char *path) {
   for (int i = 0; i < kKetiSidCount; ++i) {
