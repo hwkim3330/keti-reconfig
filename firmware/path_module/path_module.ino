@@ -48,13 +48,20 @@ BLECharacteristic *control = nullptr;
 // the RMT peripheral, and calling it from the Bluedroid callback task failed silently: the
 // relay moved and the serial said FAULT while the LED stayed on its old colour.
 //
-// Colour and rhythm carry different things on purpose, so neither has to be waited out:
-//   colour  -- which module this is, and whether it is faulted. Path 1 green, path 2 blue,
-//              and red on either when the path is cut. Two modules on a bench are then
-//              distinguishable without reading a label.
-//   rhythm  -- whether the tablet is on the line. A slow breath means connected; a double
-//              blink means running but unattended. Motion also separates a healthy board from
-//              a frozen one showing a stale colour, which a steady LED cannot do.
+// A plain, even blink. Two earlier attempts were worse: a brightness fade was invisible
+// (perceived brightness is roughly logarithmic, so a 40-to-100% ramp reads as steady on a
+// small bright LED), and a mostly-on wink read as a glitch rather than a rhythm.
+//
+// The blink is not about power. This LED draws single-digit milliamps against 40-100 mA for
+// the board with BLE running. It is there because a steady LED and a frozen board look
+// identical, and the rhythm is the only thing that says the firmware is still running.
+//
+// Two channels, one meaning each:
+//   colour -- which module, and whether the path is cut. Path 1 green, path 2 blue, red when
+//             faulted. Two modules on a bench are then told apart without a label.
+//   rate   -- whether the tablet is attached. Slow is connected, fast is running unattended.
+//             Fault deliberately does not change the rate: it already has a colour, and
+//             overloading the rate would cost the link indication.
 void updateLed() {
   uint8_t r = 0, g = 0, b = 0;
   if (faulted) {
@@ -65,20 +72,17 @@ void updateLed() {
     g = 170;  // path 1, and an unidentified board, which its BLE name already flags
   }
 
-  uint32_t scale;
-  if (tabletConnected) {
-    // Triangle breath: the colour stays readable throughout rather than blinking out.
-    const uint32_t phase = millis() % 3000;
-    const uint32_t rise = phase < 1500 ? phase : 3000 - phase;
-    scale = 40 + (rise * 60) / 1500;
-  } else {
-    const uint32_t phase = millis() % 2400;
-    const bool on = phase < 250 || (phase >= 500 && phase < 750);
-    scale = on ? 100 : 15;  // never fully dark: the board should still look powered
-  }
+  // Slow blink at 2 s is calm enough to read as a state rather than an alarm, and still makes
+  // a stopped board obvious within a couple of seconds. Unattended is four times faster, which
+  // reads as searching without either rate looking irregular.
+  const uint32_t period = tabletConnected ? 2000 : 500;
+  const bool dark = (millis() % period) >= period / 2;
 
-  rgbLedWrite(kLedPin, uint8_t(r * scale / 100), uint8_t(g * scale / 100),
-              uint8_t(b * scale / 100));
+  if (dark) {
+    rgbLedWrite(kLedPin, 0, 0, 0);
+  } else {
+    rgbLedWrite(kLedPin, r, g, b);
+  }
 }
 
 void applyRelay() {
