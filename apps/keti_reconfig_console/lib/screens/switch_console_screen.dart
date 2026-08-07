@@ -680,6 +680,10 @@ class _PortRow extends StatelessWidget {
         ? const Color(0xFF9AA5B5)
         : (port.up ? const Color(0xFF0F766E) : const Color(0xFF9AA5B5));
     final faulty = port.inErrors + port.outErrors + port.inDiscards + port.outDiscards > 0;
+    // The controller reaches the switch through this port. Disabling it would strand the
+    // controller with no way back, so the control is shown and disabled rather than hidden --
+    // an absent button invites someone to wonder where it went.
+    final protected = port.name == '1';
 
     return Container(
       padding: const EdgeInsets.all(10),
@@ -710,7 +714,7 @@ class _PortRow extends StatelessWidget {
               // Shown as an action rather than a state, because what the port is doing is the
               // oper-status above it -- this button only says what was asked for.
               GestureDetector(
-                onTap: stale ? null : () => onSetEnabled(!port.up),
+                onTap: (stale || protected) ? null : () => onSetEnabled(!port.up),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
@@ -718,11 +722,14 @@ class _PortRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(7),
                     border: Border.all(color: const Color(0xFFE3E8EF)),
                   ),
-                  child: Text(port.up ? 'disable' : 'enable',
+                  child: Text(
+                      protected ? 'uplink' : (port.up ? 'disable' : 'enable'),
                       style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w800,
-                          color: stale ? const Color(0xFFB9C1CE) : const Color(0xFF44506A))),
+                          color: (stale || protected)
+                              ? const Color(0xFFB9C1CE)
+                              : const Color(0xFF44506A))),
                 ),
               ),
             ],

@@ -83,6 +83,13 @@ uint32_t sequenceNumber = 0;
 
 // Set by the BLE callback, acted on in loop(). Writing from the callback would put a blocking
 // network round trip inside the Bluedroid task, which is the shape that wedged the last rig.
+// The port this controller reaches the switch through. Disabling it would cut the only path
+// back, and nothing here could undo that -- recovery would need the serial console. Stated as
+// a constant rather than detected: the controller cannot see which port its own frames arrive
+// on without walking the bridge FDB, and a guard that guesses is worse than one that is
+// written down. On a different rig, change this.
+static const char *kProtectedPort = "1";
+
 volatile bool pendingPortWrite = false;
 bool pendingPortEnable = false;
 String pendingPort;
@@ -136,6 +143,11 @@ class ControlCallbacks final : public BLECharacteristicCallbacks {
     // would land on different nodes and the switch would accept a change nobody asked for.
     if (!catalogMatches) {
       notifyLine("!ACK:PORT:REFUSED:catalog mismatch");
+      return;
+    }
+    if (!enable && name == kProtectedPort) {
+      notifyLine("!ACK:PORT:REFUSED:that is the controller's own uplink");
+      Serial.printf("refused: port %s carries this controller's link\n", name.c_str());
       return;
     }
     pendingPort = name;
