@@ -903,6 +903,7 @@ class _SwitchPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = state.switches[active];
     final connected = state.connected.contains(active);
+    final firstSeen = state.connectedAt[active];
     final fresh = _fresh(snapshot?.receivedAt);
 
     final selected = selectedPort == null
@@ -959,13 +960,13 @@ class _SwitchPanel extends ConsumerWidget {
               // to wiping the device, and this only does the first.
               _TextAction(
                 label: 'Clear gating',
-                enabled: connected,
+                enabled: connected && fresh && snapshot != null,
                 onTap: () => ref.read(ketiLinkServiceProvider).clearGating(active),
               ),
               const SizedBox(width: 14),
               _TextAction(
                 label: 'Save to flash',
-                enabled: connected,
+                enabled: connected && fresh && snapshot != null,
                 onTap: () => ref.read(ketiLinkServiceProvider).saveConfig(active),
               ),
             ],
@@ -1004,7 +1005,9 @@ class _SwitchPanel extends ConsumerWidget {
           if (!connected)
             const _Note('No link to the switch controller -- nothing measured')
           else if (snapshot == null)
-            const _Note('Connected, waiting for the first snapshot')
+            _Note(_fresh(firstSeen)
+                ? 'Connected, waiting for the first snapshot'
+                : 'The controller is reachable but its switch is not answering')
           else if (!fresh)
             _Note('Controller silent since ${_age(snapshot.receivedAt)} -- '
                 'the values below are from snapshot #${snapshot.sequence}, not now')

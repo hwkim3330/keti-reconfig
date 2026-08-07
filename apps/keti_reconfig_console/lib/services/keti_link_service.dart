@@ -173,6 +173,7 @@ class KetiState {
     this.pathSnapshots = const {},
     this.tas = const {},
     this.eth = const {},
+    this.connectedAt = const {},
     this.scanning = false,
   });
 
@@ -181,6 +182,10 @@ class KetiState {
   final Map<int, PathSnapshot> pathSnapshots;
   final Map<KetiDevice, Map<String, TasSnapshot>> tas;
   final Map<KetiDevice, Map<String, EthSnapshot>> eth;
+
+  /// When each device's link came up. Lets the console tell "has not answered yet" from "has
+  /// stopped answering" -- the first is normal for a second, the second is a fault.
+  final Map<KetiDevice, DateTime> connectedAt;
 
   /// The switches that have ever reported, in device order. One switch is the common case and
   /// the console shows no selector for it.
@@ -194,6 +199,7 @@ class KetiState {
     Map<int, PathSnapshot>? pathSnapshots,
     Map<KetiDevice, Map<String, TasSnapshot>>? tas,
     Map<KetiDevice, Map<String, EthSnapshot>>? eth,
+    Map<KetiDevice, DateTime>? connectedAt,
     bool? scanning,
   }) {
     return KetiState(
@@ -202,6 +208,7 @@ class KetiState {
       pathSnapshots: pathSnapshots ?? this.pathSnapshots,
       tas: tas ?? this.tas,
       eth: eth ?? this.eth,
+      connectedAt: connectedAt ?? this.connectedAt,
       scanning: scanning ?? this.scanning,
     );
   }
@@ -316,7 +323,10 @@ class KetiLinkService {
           characteristic.lastValueStream.listen((value) => _onLine(which, value));
       await characteristic.setNotifyValue(true);
 
-      _state = _state.copyWith(connected: {..._state.connected, which});
+      _state = _state.copyWith(
+        connected: {..._state.connected, which},
+        connectedAt: {..._state.connectedAt, which: DateTime.now()},
+      );
       _emit();
       // Nothing left to look for, so stop listening. The window is 25 s and without this the
       // console says it is scanning for up to that long after everything has been found.
