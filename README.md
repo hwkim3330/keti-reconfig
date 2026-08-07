@@ -171,6 +171,33 @@ ESP32-S3 + W5500 이 이더넷으로 스위치의 CORECONF 를 직접 말한다.
 현재 6개 항목: `ietf-interfaces:interfaces` (2005), `ietf-system:system-state/platform`
 (19024), interface/name/oper-status/statistics.
 
+## 태블릿 콘솔 (apps/keti_reconfig_console)
+
+태블릿이 **유일한 BLE 센트럴**로 세 페리페럴에 동시에 붙는다: `KETI-SWITCH`, `KETI-PATH1`,
+`KETI-PATH2`. 이전 데모에서 ESP32 를 센트럴로 쓴 것이 멈춤의 원인이었고, 이 구조에서는
+어떤 ESP 도 그 코드 경로를 타지 않는다.
+
+**실기 검증 완료 (2026-08-07):**
+
+- 세 링크 동시 연결 — 헤더에 `Switch: live · Path 1: live · Path 2: live`
+- 스위치: Ethernet up, **3 ports**, 스냅샷 번호 증가, 포트별 실시간 처리율
+  (포트 1 = 8.2 kbps, L3V1 = 8.1 kbps, 포트 2 = DOWN 0.0 kbps)
+- `Inject fault` → 모듈 시리얼이 `relay=GPIO13 NORMAL` → **`FAULT`**,
+  `Recover` → **`NORMAL`** 복귀. 앱 표시(`relay closed` / `relay open`)와 일치.
+
+마지막 항목이 중요하다: 확인을 **앱의 자기 주장이 아니라 모듈 자신의 시리얼**로 했다.
+앱이 자기가 보낸 명령을 근거로 상태를 그리면 아무것도 증명하지 못한다.
+
+### 연결됨과 신선함은 다르다
+
+헤더의 칩은 `live` / `silent` / `offline` 세 가지다. GATT 링크는 상대가 말을 멈춰도 살아
+있으므로, 링크만 보는 콘솔은 낡은 값을 현재값으로 보여준다 — 이전 데모에서 실제로 그렇게
+당했다. 그래서 모든 스냅샷에 `seq` 가 실리고, 6초 이상 조용하면 `silent` 로 바뀌며 수치에
+"지금이 아니다"라고 명시한다.
+
+처리율은 연속한 두 스냅샷의 차분으로 계산한다. 카운터는 스위치가 재부팅하면 되감기므로
+음수 차분은 처리율로 쓰지 않는다.
+
 ## 미확인 / 열린 항목
 
 - **태블릿이 스위치 상태를 받는 경로.** ESP 를 경유할지, 태블릿이 직접 CoAP 를 말할지
