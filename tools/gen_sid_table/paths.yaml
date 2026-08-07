@@ -1,0 +1,22 @@
+# YANG paths the switch-controller firmware needs, resolved to SIDs at build time.
+#
+# Keep this list small and deliberate. The point of a generated table is that the firmware
+# never carries the 1.6 MB YANG catalog nor parses JSON on the device -- it carries only the
+# handful of SIDs it actually asks for.
+#
+# Adding a path here and re-running the generator is the whole workflow.
+
+# The dashboard's source of truth: every port, its link state, and its counters. Reading the
+# subtree rather than named ports is deliberate -- the LAN9692 has many more ports than the
+# 9662 on the bench, and the port list must be discovered, never assumed.
+- "/ietf-interfaces:interfaces"
+
+# Device identity, for the console header.
+- "/ietf-system:system-state/platform"
+
+# Named nodes under the subtree above. Not needed to read it, but having the SIDs lets the
+# firmware decode a response without carrying the catalog to look names up.
+- "/ietf-interfaces:interfaces/interface"
+- "/ietf-interfaces:interfaces/interface/name"
+- "/ietf-interfaces:interfaces/interface/oper-status"
+- "/ietf-interfaces:interfaces/interface/statistics"

@@ -138,6 +138,39 @@ GPIO48/21 × 어드레서블/일반 4가지를 순서대로 점등했고, 육안
 `seq` 는 장식이 아니다. GATT 연결만 보는 콘솔은 조용해진 링크와 죽은 링크를 구별하지
 못하고 낡은 값을 현재값처럼 보여준다 — 이전 데모에서 실제로 그렇게 당했다.
 
+## 스위치 컨트롤러 (firmware/switch_controller)
+
+ESP32-S3 + W5500 이 이더넷으로 스위치의 CORECONF 를 직접 말한다. **실기 검증됨.**
+
+요청 형태는 `keti-tsn-cli` 의 `buildiFetchRequest` 에서 그대로 가져왔다:
+**FETCH (0.05), Uri-Path `c`, Content-Format 141, 페이로드는 SID 배열의 CBOR.**
+
+카탈로그 체크섬 조회(SID 29304) 실측 결과:
+
+```
+-> FETCH /c  payload: 81 19 72 78            (CBOR [29304])
+<- 2.05 Content, 22 bytes
+   BF 19 72 78 50 5151BAE07677B1501F9CF52637F2A38F FF
+   = {29304: h'5151...'}  -> SID 테이블과 일치
+```
+
+응답을 읽을 때 두 가지를 처음에 틀렸고, 둘 다 위 덤프에 그대로 보인다:
+맵이 **무한길이**(`BF` … `FF`)이지 개수가 붙은 맵이 아니고, 체크섬은 텍스트가 아니라
+**바이트열**이라 16진수로 렌더링해야 한다. 짐작한 형식이 아니라 실제 바이트가 기준이다.
+
+### SID 테이블 생성기 (tools/gen_sid_table)
+
+`paths.yaml` 에 필요한 YANG 경로를 적고 `node generate.mjs` 를 돌리면
+`firmware/switch_controller/sid_table.h` 가 나온다. 카탈로그는 `keti-tsn-cli` 의 캐시에서
+읽고, **캐시 디렉터리 이름이 곧 체크섬**이라 그것이 헤더에 함께 박힌다.
+
+- 하나라도 해석에 실패하면 **부분 테이블을 내보내지 않고 실패한다.** 부분 테이블은 펌웨어에
+  조용한 구멍을 만든다 — 되는 경로만 묻고 안 되는 경로는 언급조차 하지 않게 된다.
+- 경로는 선행 슬래시가 있어도 없어도 받는다(카탈로그 키에는 슬래시가 없다).
+
+현재 6개 항목: `ietf-interfaces:interfaces` (2005), `ietf-system:system-state/platform`
+(19024), interface/name/oper-status/statistics.
+
 ## 미확인 / 열린 항목
 
 - **태블릿이 스위치 상태를 받는 경로.** ESP 를 경유할지, 태블릿이 직접 CoAP 를 말할지
