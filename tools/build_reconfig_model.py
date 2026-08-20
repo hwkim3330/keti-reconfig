@@ -237,6 +237,16 @@ def logo_label_texture(name):
     g["textures"].append({"source": len(g["images"])-1, "sampler": 0})
     return len(g["textures"]) - 1
 
+def add_ortho(p0, p1, th, material, order=(0, 2, 1)):
+    """Right-angle (Manhattan) route from p0 to p1: axis-aligned segments only.
+    order = axis sequence, 0=x 1=y 2=z (default x, then z, then y)."""
+    cur = list(p0)
+    for ax in order:
+        nxt = list(cur); nxt[ax] = p1[ax]
+        if abs(nxt[ax] - cur[ax]) > 1e-6:
+            add_line_between(tuple(cur), tuple(nxt), th, material)
+        cur = nxt
+
 def add_textured_cube(cx, cy, cz, s, material):
     h = s/2
     # 6 faces, 4 verts each, UV (0,0)(1,0)(1,1)(0,1) upright on side faces
@@ -321,24 +331,22 @@ tex2 = label_texture("PATH 2", (40,90,200,255))     # blue plate
 mat_box1 = unlit(color=[1,1,1,1], tex=tex1)
 mat_box2 = unlit(color=[1,1,1,1], tex=tex2)
 
-# --- properly connected wiring ---
-# switch anchor points (front A/B rear faces, rear switch front face)
-A_pt = (3.4, 4.2, 11.4)          # front switch A, rear face
-B_pt = (-3.4, 4.2, 11.4)         # front switch B, rear face
-R_pt = (0.0, 4.0, REAR_NEW_Z + 1.98)   # rear switch, front face
-BOX1 = (2.0, 4.0, 0.0)           # injection module on path 1
-BOX2 = (-2.0, 4.0, 0.0)          # injection module on path 2
-# each redundant path: front switch -> injection module -> rear switch
-add_line_between(A_pt, BOX1, 0.16, mat_line1)
-add_line_between(BOX1, R_pt, 0.16, mat_line1)
+# --- wiring: right-angle routes, two paths stay SEPARATE into the rear switch ---
+PY = 4.2                                   # wiring plane height
+REAR_FRONT = REAR_NEW_Z + 1.98             # rear switch front face z (~-11)
+# Path 1 runs at x=+2, Path 2 at x=-2; each enters the rear box at its own x
+# (rear box spans x +-2.75, so +2 and -2 are two distinct entry points, not merged).
+BOX1 = (2.0, PY, 0.0)
+BOX2 = (-2.0, PY, 0.0)
+# front switch A (x=3.4) -> lateral to x=2 -> longitudinal through box1 -> rear entry (2,-11)
+add_ortho((3.4, PY, 11.4), (2.0, PY, REAR_FRONT), 0.16, mat_line1, order=(0, 2, 1))
 add_textured_cube(*BOX1, 0.9, mat_box1)
-add_line_between(B_pt, BOX2, 0.16, mat_line2)
-add_line_between(BOX2, R_pt, 0.16, mat_line2)
+add_ortho((-3.4, PY, 11.4), (-2.0, PY, REAR_FRONT), 0.16, mat_line2, order=(0, 2, 1))
 add_textured_cube(*BOX2, 0.9, mat_box2)
 
-# rear-centre LiDAR -> rear switch
+# rear-centre LiDAR -> rear switch (straight down the spine, right angles)
 mat_rl = unlit(color=[0.10, 0.42, 0.95, 1.0], name="RearLidar-line")
-add_line_between((0.0, 5.5, -18.5), (0.0, 4.5, REAR_NEW_Z - 1.98), 0.16, mat_rl)
+add_ortho((0.0, 5.5, -18.5), (0.0, 4.5, REAR_NEW_Z - 1.98), 0.16, mat_rl, order=(2, 1, 0))
 
 # --- switches: solid body + the TSN ZCU project badge decal on top (25:18) ---
 BADGE = "/home/kim/keti-reconfig/tools/tsn_zcu.png"
@@ -366,16 +374,16 @@ switch_box(FAx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F A")   # front A (right)
 switch_box(FBx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F B")   # front B (left)
 switch_box(0.0, 4.0, REAR_NEW_Z, 5.5, 1.8, 3.96, "TSN-R")  # rear (smaller)
 
-# line linking the two front switches (A <-> B)
+# line linking the two front switches (A <-> B) - pure lateral, already right-angle
 mat_fab = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FrontAB-line")
 add_line_between((FAx, 4.2, FZ), (FBx, 4.2, FZ), 0.16, mat_fab)
 
-# clean lidar lines into the front switches (blue); endpoints land on the box tops
+# LiDAR -> switch, right-angle routes. Front-centre binds to ONE switch (A).
 mat_fll = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FLidar-line")
 FTOP = 4.2 + 2.4 / 2   # front box top height
-add_line_between((-8.5, 10.0, 16.2), (FBx, FTOP, FZ), 0.16, mat_fll)  # front-left  -> B
-add_line_between((8.3, 10.0, 16.2), (FAx, FTOP, FZ), 0.16, mat_fll)   # front-right -> A
-add_line_between((0.0, 5.5, 18.5), (0.0, 4.4, FZ), 0.16, mat_fll)     # front-centre -> A<->B link
+add_ortho((-8.5, 10.0, 16.2), (FBx, FTOP, FZ), 0.16, mat_fll, order=(0, 2, 1))  # FL -> B
+add_ortho((8.3, 10.0, 16.2), (FAx, FTOP, FZ), 0.16, mat_fll, order=(0, 2, 1))   # FR -> A
+add_ortho((0.0, 5.5, 18.5), (FAx, FTOP, FZ), 0.16, mat_fll, order=(2, 0, 1))    # FC -> A
 
 # ---- pack buffer ----
 while len(pos) % 4: pos.append(0)
