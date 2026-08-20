@@ -51,14 +51,14 @@ const List<LabelHotspotConfig> labelHotspots = [
   LabelHotspotConfig(
     slotName: 'inlineEspAR',
     label: 'Path 1',
-    position: '1.9m 8m 0m',
+    position: '2m 6m 0m',
     dataTarget: '2m 4m 0m',
     dataOrbit: '135deg 45deg 2.5m',
   ),
   LabelHotspotConfig(
     slotName: 'inlineEspBR',
     label: 'Path 2',
-    position: '-1.9m 6m 0m',
+    position: '-2m 6m 0m',
     dataTarget: '-2m 4m 0m',
     dataOrbit: '135deg 45deg 2.5m',
   ),

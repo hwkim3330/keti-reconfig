@@ -321,19 +321,24 @@ tex2 = label_texture("PATH 2", (40,90,200,255))     # blue plate
 mat_box1 = unlit(color=[1,1,1,1], tex=tex1)
 mat_box2 = unlit(color=[1,1,1,1], tex=tex2)
 
-# path line now spans from the front stub (z~10.5) to the moved rear switch's front face
-FE = 10.5
-RE = REAR_NEW_Z + 2.0          # rear switch front face
-line_c = (FE + RE) / 2
-line_len = FE - RE
-for x, mline, mbox in ((2.0, mat_line1, mat_box1), (-2.0, mat_line2, mat_box2)):
-    add_line(x, 4.0, line_c, 0.16, 0.16, line_len, mline)
-    add_textured_cube(x, 4.0, 0.0, 0.9, mbox)   # injection module at the centre of the line
+# --- properly connected wiring ---
+# switch anchor points (front A/B rear faces, rear switch front face)
+A_pt = (3.4, 4.2, 11.4)          # front switch A, rear face
+B_pt = (-3.4, 4.2, 11.4)         # front switch B, rear face
+R_pt = (0.0, 4.0, REAR_NEW_Z + 1.98)   # rear switch, front face
+BOX1 = (2.0, 4.0, 0.0)           # injection module on path 1
+BOX2 = (-2.0, 4.0, 0.0)          # injection module on path 2
+# each redundant path: front switch -> injection module -> rear switch
+add_line_between(A_pt, BOX1, 0.16, mat_line1)
+add_line_between(BOX1, R_pt, 0.16, mat_line1)
+add_textured_cube(*BOX1, 0.9, mat_box1)
+add_line_between(B_pt, BOX2, 0.16, mat_line2)
+add_line_between(BOX2, R_pt, 0.16, mat_line2)
+add_textured_cube(*BOX2, 0.9, mat_box2)
 
-# one clean blue line from the rear-centre LiDAR to the moved rear switch
+# rear-centre LiDAR -> rear switch
 mat_rl = unlit(color=[0.10, 0.42, 0.95, 1.0], name="RearLidar-line")
-rl_z0, rl_z1 = -18.5, REAR_NEW_Z - 2.0
-add_line(0.0, 4.6, (rl_z0 + rl_z1) / 2, 0.16, 0.16, rl_z1 - rl_z0, mat_rl)
+add_line_between((0.0, 5.5, -18.5), (0.0, 4.5, REAR_NEW_Z - 1.98), 0.16, mat_rl)
 
 # --- switches: solid body + the TSN ZCU project badge decal on top (25:18) ---
 BADGE = "/home/kim/keti-reconfig/tools/tsn_zcu.png"
@@ -365,11 +370,12 @@ switch_box(0.0, 4.0, REAR_NEW_Z, 5.5, 1.8, 3.96, "TSN-R")  # rear (smaller)
 mat_fab = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FrontAB-line")
 add_line_between((FAx, 4.2, FZ), (FBx, 4.2, FZ), 0.16, mat_fab)
 
-# clean lidar lines into the front switches (blue)
+# clean lidar lines into the front switches (blue); endpoints land on the box tops
 mat_fll = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FLidar-line")
-add_line_between((-8.5, 9.0, 16.2), (FBx, 5.5, FZ + 2), 0.16, mat_fll)  # front-left lidar -> B
-add_line_between((8.3, 9.0, 16.2), (FAx, 5.5, FZ + 2), 0.16, mat_fll)   # front-right lidar -> A
-add_line_between((0.0, 5.5, 18.5), (0.0, 5.0, FZ + 3.5), 0.16, mat_fll)  # front-centre lidar -> front
+FTOP = 4.2 + 2.4 / 2   # front box top height
+add_line_between((-8.5, 10.0, 16.2), (FBx, FTOP, FZ), 0.16, mat_fll)  # front-left  -> B
+add_line_between((8.3, 10.0, 16.2), (FAx, FTOP, FZ), 0.16, mat_fll)   # front-right -> A
+add_line_between((0.0, 5.5, 18.5), (0.0, 4.4, FZ), 0.16, mat_fll)     # front-centre -> A<->B link
 
 # ---- pack buffer ----
 while len(pos) % 4: pos.append(0)
