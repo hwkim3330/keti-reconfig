@@ -20,11 +20,40 @@
   --bad-d:     #d92c22;
   --warn:      #ff9500;
   --shadow:    0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
+  --topbar:    rgba(255,255,255,0.8);
+  --grid-line: #ececf1;
+  --logo-bg:   transparent;
   --font: -apple-system, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto,
           "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
-  font-size: 17px;
+  /* The panel is a 7" 720x1280 (high DPI), so type must run large to stay legible
+     at arm's length. This base is deliberately big; everything scales off it. */
+  font-size: 21px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Dark theme - flip with the header toggle. Both are tuned for the panel;
+   keep whichever reads better in the room. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:        #000000;   /* true black - crispest on the panel, best glare */
+  --card:      #1c1c1e;
+  --inset:     #2c2c2e;
+  --hair:      rgba(255,255,255,0.10);
+  --ink:       #ffffff;
+  --ink-2:     #aeaeb2;
+  --ink-3:     #8e8e93;
+  --accent:    #4aa3ff;   /* brighter blue for the dark surface */
+  --accent-2:  #ff8a4c;
+  --ok:        #32d74b;
+  --ok-d:      #28b23e;
+  --bad:       #ff453a;
+  --bad-d:     #d63a30;
+  --warn:      #ff9f0a;
+  --shadow:    0 1px 2px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5);
+  --topbar:    rgba(28,28,30,0.8);
+  --grid-line: #2c2c2e;
+  --logo-bg:   transparent;  /* logo has no truly-dark pixels, reads fine on black */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -45,13 +74,26 @@ body {
 .topbar {
   display: flex; align-items: center; gap: 0.8rem;
   padding: 0.8rem 1rem;
-  background: rgba(255,255,255,0.8);
+  background: var(--topbar);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--hair);
   flex: 0 0 auto;
 }
-.topbar .logo { height: 30px; width: auto; }
+.topbar .logo {
+  height: 30px; width: auto;
+  background: var(--logo-bg);
+  padding: var(--logo-pad, 0);
+  border-radius: 0.4rem;
+}
+.theme-btn {
+  margin-left: 0.2rem;
+  width: 2.1rem; height: 2.1rem; border-radius: 999px;
+  background: var(--inset); border: none; color: var(--ink-2);
+  font-size: 1.05rem; cursor: pointer; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+}
+.theme-btn:active { opacity: 0.6; }
 .titles { display: flex; flex-direction: column; line-height: 1.15; }
 .title { font-size: 1.05rem; font-weight: 700; }
 .subtitle { font-size: 0.72rem; color: var(--ink-3); font-weight: 500; }
@@ -87,10 +129,10 @@ body {
 /* ---- gauges: 3 across ---- */
 .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; flex: 0 0 auto; }
 .gauge { display: flex; flex-direction: column; gap: 0.35rem; }
-.gauge-label { font-size: 0.64rem; letter-spacing: 0.07em; color: var(--ink-3); font-weight: 700; }
-.gauge-value { font-size: 1.85rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.03em; }
+.gauge-label { font-size: 0.66rem; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 700; }
+.gauge-value { font-size: 2.15rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.03em; }
 .gauge-value small { font-size: 0.72rem; font-weight: 600; color: var(--ink-3); margin-left: 0.2rem; letter-spacing: 0; }
-.gauge-sub { font-size: 0.7rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.gauge-sub { font-size: 0.72rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .bar { height: 0.4rem; background: var(--inset); border-radius: 999px; overflow: hidden; }
 .bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width 0.3s cubic-bezier(0.2,0.7,0.2,1); }
 .bar-fill.alt { background: var(--accent-2); }
@@ -110,10 +152,10 @@ body {
   position: relative;
   flex: 1 1 0;
   border: none;
-  border-radius: 1rem;
-  padding: 1.15rem 1rem;
+  border-radius: 1.1rem;
+  padding: 1.35rem 1rem;
   display: flex; align-items: center; justify-content: center; gap: 0.6rem;
-  font-size: 1.15rem; font-weight: 700; letter-spacing: 0.02em;
+  font-size: 1.35rem; font-weight: 800; letter-spacing: 0.03em;
   color: #fff;
   cursor: pointer;
   overflow: hidden;

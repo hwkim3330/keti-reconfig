@@ -7,6 +7,7 @@ Wants=bluetooth.service pi-trafgen.service
 # Uses the SYSTEM python (bluezero needs the apt python3-dbus/gi, not the venv).
 # Talks BlueZ over the system D-Bus, so it runs as root.
 User=root
+Environment=PYTHONUNBUFFERED=1
 WorkingDirectory=/opt/pi-trafgen
 ExecStartPre=/bin/sh -c 'until curl -sf http://127.0.0.1:8080/api/system >/dev/null; do sleep 1; done'
 ExecStart=/usr/bin/python3 -m server.ble_gatt

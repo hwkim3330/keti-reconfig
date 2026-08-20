@@ -2,8 +2,26 @@
 /* pi-trafgen kiosk front-end. No build step, no external libs - it runs off the
    Pi's loopback and must work with the network cable pulled. */
 
-const C = { blue: "#1668b3", orange: "#ff6b1f" };
 const $ = (id) => document.getElementById(id);
+
+// Chart colours follow the theme - read the live CSS custom properties so the
+// canvas matches whichever theme (light/dark) is active.
+function themeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n, fb) => (cs.getPropertyValue(n).trim() || fb);
+  return {
+    blue: v("--accent", "#1668b3"),
+    orange: v("--accent-2", "#ff6b1f"),
+    grid: v("--grid-line", "#ececf1"),
+  };
+}
+let C = themeColors();
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("tg-theme", theme); } catch (e) {}
+  C = themeColors();
+}
 const api = (path, opts) => fetch(path, opts).then((r) => r.json().then((j) => {
   if (!r.ok) throw new Error(j.detail || r.statusText);
   return j;
@@ -52,7 +70,7 @@ const chart = (() => {
     ctx.textBaseline = "middle";
     for (let i = 0; i <= 4; i++) {
       const y = pad.t + (ph * i) / 4;
-      ctx.strokeStyle = "#ececf1"; ctx.lineWidth = 1;
+      ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
       ctx.textAlign = "right";
       ctx.fillStyle = C.blue;
@@ -344,6 +362,13 @@ async function boot() {
   };
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
   $("btn-save").onclick = saveCurrentPreset;
+
+  // theme: default dark (best legibility on the panel), remembered per device
+  let theme = "dark";
+  try { theme = localStorage.getItem("tg-theme") || "dark"; } catch (e) {}
+  applyTheme(theme);
+  $("btn-theme").onclick = () =>
+    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
 
   try {
     state.system = await api("/api/system");

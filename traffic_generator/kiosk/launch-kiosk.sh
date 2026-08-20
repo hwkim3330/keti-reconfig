@@ -22,14 +22,20 @@ sleep 1
 BIN=chromium-browser
 command -v "$BIN" >/dev/null 2>&1 || BIN=chromium
 
+# Prefer the Wayland backend when we're in a Wayland session (labwc/wayfire on
+# bookworm); otherwise let Chromium auto-detect (X11).
+PLATFORM=(--ozone-platform-hint=auto)
+[ -n "${WAYLAND_DISPLAY:-}" ] && PLATFORM=(--ozone-platform=wayland)
+
 exec "$BIN" \
   --kiosk \
   --app="$URL" \
   --user-data-dir="$HOME/.config/pi-trafgen-kiosk-profile" \
-  --ozone-platform-hint=auto \
+  "${PLATFORM[@]}" \
+  --password-store=basic \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \
-  --disable-features=TranslateUI \
+  --disable-features=TranslateUI,Translate \
   --check-for-update-interval=31536000 \
   --overscroll-history-navigation=0
