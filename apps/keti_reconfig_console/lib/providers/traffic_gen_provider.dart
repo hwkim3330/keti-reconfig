@@ -2,13 +2,20 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/traffic_gen_ble.dart';
 import '../services/traffic_gen_service.dart';
 
 /// Connection lifecycle to the Pi, distinct from whether pktgen is *running*.
 enum TgLink { connecting, online, offline }
 
+/// How the tablet reaches the generator. WiFi is the full HTTP path (rich stream
+/// editor + live rates); BLE is the Bluetooth path (start/stop + presets + live
+/// rates) that needs no network, matching the reconfig demo's BLE-central model.
+enum TgTransport { wifi, ble }
+
 class TrafficGenState {
   const TrafficGenState({
+    this.transport = TgTransport.wifi,
     this.link = TgLink.connecting,
     this.system,
     this.config,
@@ -20,6 +27,7 @@ class TrafficGenState {
     this.isError = false,
   });
 
+  final TgTransport transport;
   final TgLink link;
   final TgSystem? system;
   final TgConfig? config;
@@ -31,12 +39,14 @@ class TrafficGenState {
   final bool isError;
 
   bool get running => status.running;
+  bool get isBle => transport == TgTransport.ble;
 
   double get plannedMbps => ((plan?['total_mbps'] ?? 0) as num).toDouble();
   double get plannedPps => ((plan?['total_pps'] ?? 0) as num).toDouble();
   bool get plannedOverLine => plannedMbps > 1000;
 
   TrafficGenState copyWith({
+    TgTransport? transport,
     TgLink? link,
     TgSystem? system,
     TgConfig? config,
@@ -49,6 +59,7 @@ class TrafficGenState {
     bool clearMessage = false,
   }) {
     return TrafficGenState(
+      transport: transport ?? this.transport,
       link: link ?? this.link,
       system: system ?? this.system,
       config: config ?? this.config,
@@ -68,8 +79,10 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
   }
 
   final TrafficGenService _svc;
+  final TrafficGenBle _ble = TrafficGenBle();
   StreamSubscription? _wsSub;
-  Timer? _reconnect;
+  StreamSubscription? _bleLinkSub, _bleSampleSub, _bleRunSub;
+  Timer? _reconnect, _bleRetry;
   bool _disposed = false;
 
   static const _historyCap = 240;
@@ -79,6 +92,51 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
   Future<void> setEndpoint(String host, int port) async {
     _svc.setEndpoint(host, port);
     await connect();
+  }
+
+  // -- transport ------------------------------------------------------------
+  Future<void> setTransport(TgTransport t) async {
+    if (t == state.transport) return;
+    state = state.copyWith(transport: t, history: const [], clearMessage: true);
+    if (t == TgTransport.ble) {
+      _wsSub?.cancel();
+      _reconnect?.cancel();
+      _startBle();
+    } else {
+      _stopBle();
+      await connect();
+    }
+  }
+
+  void _startBle() {
+    state = state.copyWith(link: TgLink.connecting);
+    _bleLinkSub = _ble.link.listen((up) {
+      state = state.copyWith(link: up ? TgLink.online : TgLink.offline);
+      if (!up && !_disposed && state.isBle) {
+        _bleRetry?.cancel();
+        _bleRetry = Timer(const Duration(seconds: 3), () { if (state.isBle) _ble.connect(); });
+      }
+    });
+    _bleSampleSub = _ble.samples.listen((s) {
+      final h = [...state.history, s];
+      state = state.copyWith(
+        last: s,
+        history: h.length > _historyCap ? h.sublist(h.length - _historyCap) : h,
+      );
+    });
+    _bleRunSub = _ble.running.listen((r) {
+      state = state.copyWith(
+          status: TgStatus(running: r, iface: 'eth0', linkMbps: null, operstate: 'up', elapsed: 0, error: null));
+    });
+    _ble.connect();
+  }
+
+  void _stopBle() {
+    _bleRetry?.cancel();
+    _bleLinkSub?.cancel();
+    _bleSampleSub?.cancel();
+    _bleRunSub?.cancel();
+    _ble.disconnect();
   }
 
   Future<void> connect() async {
@@ -165,17 +223,32 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
   }
 
   Future<void> loadPreset(String key) => _guard(() async {
+        if (state.isBle) {
+          await _ble.loadPreset(key);
+          state = state.copyWith(clearMessage: true);
+          return;
+        }
         final cfg = await _svc.loadPreset(key);
         state = state.copyWith(config: cfg, clearMessage: true);
         await refreshPlan();
       });
 
   Future<void> start() => _guard(() async {
+        if (state.isBle) {
+          await _ble.start();
+          state = state.copyWith(clearMessage: true);
+          return;
+        }
         final st = await _svc.start();
         state = state.copyWith(status: st, clearMessage: true);
       });
 
   Future<void> stop() => _guard(() async {
+        if (state.isBle) {
+          await _ble.stop();
+          state = state.copyWith(clearMessage: true);
+          return;
+        }
         final st = await _svc.stop();
         state = state.copyWith(status: st, clearMessage: true);
       });
@@ -188,6 +261,8 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
     _wsSub?.cancel();
     _reconnect?.cancel();
     _pushDebounce?.cancel();
+    _stopBle();
+    _ble.dispose();
     super.dispose();
   }
 }

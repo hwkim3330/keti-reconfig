@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/traffic_gen_provider.dart';
+import '../services/traffic_gen_ble.dart';
 import '../services/traffic_gen_service.dart';
 
 /// Traffic generator console. Drives pi-trafgen on the Pi over WiFi and plots the
@@ -164,8 +165,10 @@ class _TopBar extends ConsumerWidget {
           const SizedBox(width: 6),
           _pill(linkText, linkColor),
           const Spacer(),
-          const _HostButton(),
+          _TransportToggle(transport: state.transport),
           const SizedBox(width: 10),
+          if (!state.isBle) const _HostButton(),
+          if (!state.isBle) const SizedBox(width: 10),
           Icon(Icons.timer_outlined,
               size: 16,
               color: st.running ? TrafficGenScreen._green : TrafficGenScreen._ink3),
@@ -191,6 +194,54 @@ class _TopBar extends ConsumerWidget {
         child: Text(text,
             style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
       );
+}
+
+/// WiFi / BLE segmented control. BLE start/stop needs no network - it matches
+/// the reconfig demo's Bluetooth-central model.
+class _TransportToggle extends ConsumerWidget {
+  const _TransportToggle({required this.transport});
+  final TgTransport transport;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final n = ref.read(trafficGenProvider.notifier);
+    Widget seg(TgTransport t, IconData icon, String label) {
+      final on = t == transport;
+      return GestureDetector(
+        onTap: () => n.setTransport(t),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: on ? TrafficGenScreen._blue : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 15, color: on ? Colors.white : TrafficGenScreen._ink3),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    color: on ? Colors.white : TrafficGenScreen._ink3,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: TrafficGenScreen._bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: TrafficGenScreen._line),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        seg(TgTransport.wifi, Icons.wifi_rounded, 'WiFi'),
+        seg(TgTransport.ble, Icons.bluetooth_rounded, 'BLE'),
+      ]),
+    );
+  }
 }
 
 class _HostButton extends ConsumerWidget {
@@ -499,8 +550,12 @@ class _ControlPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final n = ref.read(trafficGenProvider.notifier);
-    final presets = state.system?.presets ?? const [];
-    final block = state.system?.blockReason;
+    // Over BLE there is no /api/system, so fall back to the built-in preset list
+    // baked into the app.
+    final presets = state.isBle
+        ? [for (final p in kBuiltinPresets) TgPreset(key: p.key, label: p.label, note: p.label)]
+        : (state.system?.presets ?? const <TgPreset>[]);
+    final block = state.isBle ? null : state.system?.blockReason;
     final locked = state.running;
 
     return _Panel(
@@ -686,31 +741,43 @@ class _StreamEditor extends ConsumerWidget {
                   style: TextStyle(
                       color: TrafficGenScreen._ink3, fontSize: 11, letterSpacing: 1)),
               const Spacer(),
-              if (cfg != null)
+              if (!state.isBle && cfg != null)
                 _IfaceDropdown(cfg: cfg, system: state.system, enabled: !locked),
-              const SizedBox(width: 8),
-              _MiniButton(
-                label: '+ stream',
-                enabled: !locked && cfg != null,
-                onTap: () => n.edit((c) {
-                  final cpus = state.system?.cpus ?? 4;
-                  final idx = c.streams.length;
-                  c.streams.add(TgStream(
-                    name: 'stream ${idx + 1}',
-                    cpu: idx % cpus,
-                    queue: idx % 4,
-                  ));
-                }),
-              ),
+              if (!state.isBle) const SizedBox(width: 8),
+              if (!state.isBle)
+                _MiniButton(
+                  label: '+ stream',
+                  enabled: !locked && cfg != null,
+                  onTap: () => n.edit((c) {
+                    final cpus = state.system?.cpus ?? 4;
+                    final idx = c.streams.length;
+                    c.streams.add(TgStream(
+                      name: 'stream ${idx + 1}',
+                      cpu: idx % cpus,
+                      queue: idx % 4,
+                    ));
+                  }),
+                ),
             ],
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: cfg == null
+            child: state.isBle
                 ? const Center(
-                    child: Text('no config',
-                        style: TextStyle(color: TrafficGenScreen._ink3)))
-                : ListView.separated(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'Over BLE: presets + start/stop.\nSwitch to WiFi to edit individual streams.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: TrafficGenScreen._ink3, height: 1.5),
+                      ),
+                    ),
+                  )
+                : cfg == null
+                    ? const Center(
+                        child: Text('no config',
+                            style: TextStyle(color: TrafficGenScreen._ink3)))
+                    : ListView.separated(
                     itemCount: cfg.streams.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (_, i) =>
