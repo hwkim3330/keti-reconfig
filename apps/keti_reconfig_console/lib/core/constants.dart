@@ -30,15 +30,15 @@ const List<LabelHotspotConfig> labelHotspots = [
   LabelHotspotConfig(
     slotName: 'frontSwitchA',
     label: 'TSN-F A\nFront switch',
-    position: '3.2m 8m 13m',
-    dataTarget: '3.2m 4m 13m',
+    position: '3.4m 8m 13m',
+    dataTarget: '3.4m 4m 13m',
     dataOrbit: '135deg 45deg 2.5m',
   ),
   LabelHotspotConfig(
     slotName: 'frontSwitchB',
     label: 'TSN-F B\nFront switch',
-    position: '-3.2m 8m 13m',
-    dataTarget: '-3.2m 4m 13m',
+    position: '-3.4m 8m 13m',
+    dataTarget: '-3.4m 4m 13m',
     dataOrbit: '135deg 45deg 2.5m',
   ),
   LabelHotspotConfig(

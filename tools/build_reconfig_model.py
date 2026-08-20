@@ -218,8 +218,8 @@ def add_decal(cx, cy, cz, w, dd, material):
     specs.append((po, uo, 4, arr.min(0).tolist(), arr.max(0).tolist(), io_, 6, material))
 
 def logo_label_texture(name):
-    """A clean white plate: KETI logo on top, the switch name below."""
-    W, H = 512, 256
+    """A clean white plate (25:18) : KETI logo on top, the switch name below."""
+    W, H = 500, 360
     im = Image.new("RGBA", (W, H), (255, 255, 255, 255))
     d = ImageDraw.Draw(im)
     logo = Image.open(LOGO).convert("RGBA")
@@ -336,15 +336,19 @@ add_line(0.0, 4.6, (rl_z0 + rl_z1) / 2, 0.16, 0.16, rl_z1 - rl_z0, mat_rl)
 
 # --- switches: solid yellow body + a clean KETI-logo label decal on top ---
 mat_body = unlit(color=[0.93, 0.80, 0.16, 1.0])   # switch body
+DECAL_AR = 250.0 / 180.0   # texture aspect (width:depth), matches the label PNG
 def switch_box(cx, cy, cz, sx, sy, sz, name):
     add_line(cx, cy, cz, sx, sy, sz, mat_body)
     m = unlit(color=[1, 1, 1, 1], tex=logo_label_texture(name))
     g["materials"][m]["doubleSided"] = True
-    add_decal(cx, cy + sy/2 + 0.03, cz, sx * 0.9, sz * 0.9, m)
-FAx, FBx, FZ = 3.2, -3.2, 13.0
-switch_box(FAx, 4.2, FZ, 4.2, 2.6, 7.0, "TSN-F A")   # front A (right)
-switch_box(FBx, 4.2, FZ, 4.2, 2.6, 7.0, "TSN-F B")   # front B (left)
-switch_box(0.0, 4.0, REAR_NEW_Z, 8.0, 2.0, 4.0, "TSN-R")  # rear
+    # largest 25:18 rectangle that fits on the box top, centred
+    w = min(sx * 0.9, sz * 0.9 * DECAL_AR); dd = w / DECAL_AR
+    add_decal(cx, cy + sy/2 + 0.03, cz, w, dd, m)
+# box footprints are 25:18 (x:z) so the label decal fills the whole top
+FAx, FBx, FZ = 3.4, -3.4, 13.0
+switch_box(FAx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F A")   # front A (right)
+switch_box(FBx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F B")   # front B (left)
+switch_box(0.0, 4.0, REAR_NEW_Z, 8.0, 2.0, 5.76, "TSN-R")  # rear
 
 # clean lidar lines into the front switches (blue)
 mat_fll = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FLidar-line")

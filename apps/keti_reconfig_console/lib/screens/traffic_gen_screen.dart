@@ -592,6 +592,19 @@ class _ControlPanel extends ConsumerWidget {
                   fontFeatures: const [FontFeature.tabularFigures()]),
             ),
           const SizedBox(height: 10),
+          // one-tap TSN test traffic: load the CBS profile (PCP->TC as on the 9662)
+          // and start. Big and obvious for the demo.
+          _BigButton(
+            label: state.running ? 'TSN ON' : 'TSN ON',
+            icon: Icons.bolt_rounded,
+            color: state.running ? TrafficGenScreen._blue : TrafficGenScreen._green,
+            enabled: block == null && state.link == TgLink.online,
+            onTap: () async {
+              await n.loadPreset('cbs_tc2_tc6');
+              await n.start();
+            },
+          ),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(

@@ -360,6 +360,15 @@ async function boot() {
     try { await api("/api/stop", { method: "POST" }); showMsg("stopped"); }
     catch (e) { showMsg(e.message, true); }
   };
+  $("btn-tsn").onclick = async () => {
+    // one-tap TSN test: load the CBS profile (9662 PCP->TC mapping) and start
+    try {
+      state.config = await api("/api/preset/cbs_tc2_tc6", { method: "POST" });
+      renderStreams(); refreshPlan();
+      await api("/api/start", { method: "POST" });
+      showMsg("TSN ON - CBS TC2 (1.5M) + TC6 (3.5M)");
+    } catch (e) { showMsg(e.message, true); }
+  };
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
   $("btn-save").onclick = saveCurrentPreset;
 
