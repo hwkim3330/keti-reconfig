@@ -125,10 +125,10 @@ function paintStatus(st) {
   $("iface-pill").textContent = st.iface;
   $("link-pill").textContent = st.link_mbps ? `${st.link_mbps} Mbps` : "no link";
   $("link-pill").className = "pill " + (st.operstate === "up" ? "good" : "bad");
-  const pk = $("pktgen-pill");
-  if (state.system && !state.system.pktgen) { pk.textContent = "pktgen MISSING"; pk.className = "pill bad"; }
-  else if (state.system && !state.system.root) { pk.textContent = "not root"; pk.className = "pill bad"; }
-  else { pk.textContent = "pktgen ok"; pk.className = "pill good"; }
+  // pktgen problems are surfaced in the message line (the header pill was dropped
+  // to keep the bar on one row).
+  if (state.system && !state.system.pktgen) showMsg("pktgen module not loaded on the Pi", true);
+  else if (state.system && !state.system.root) showMsg("server is not running as root", true);
 
   const el = Math.floor(st.elapsed || 0);
   $("elapsed").textContent = `${String(Math.floor(el / 60)).padStart(2, "0")}:${String(el % 60).padStart(2, "0")}`;
