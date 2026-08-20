@@ -114,9 +114,31 @@ def status_read(options):  # noqa: ANN001
 
 
 # -- assembly ----------------------------------------------------------------
+def on_connect(device):  # noqa: ANN001 - bluezero passes the remote device
+    print(f"[ble] central connected: {getattr(device, 'address', device)}")
+
+
+def on_disconnect(adapter_addr, device_addr):  # noqa: ANN001
+    # bluezero keeps the advertisement registered across disconnects, so the
+    # peripheral stays discoverable for the next connection without any work here.
+    print(f"[ble] central disconnected: {device_addr} (still advertising)")
+
+
 def build() -> peripheral.Peripheral:
     dongle = list(adapter.Adapter.available())[0]
+    # Keep the controller powered and connectable across reconnects.
+    try:
+        dongle.powered = True
+    except Exception:  # noqa: BLE001
+        pass
     trafgen = peripheral.Peripheral(dongle.address, local_name=LOCAL_NAME)
+    # Re-advertise automatically after a central drops (attributes exist on the
+    # bluezero Peripheral; guard in case of an older build).
+    try:
+        trafgen.on_connect = on_connect
+        trafgen.on_disconnect = on_disconnect
+    except Exception:  # noqa: BLE001
+        pass
     trafgen.add_service(srv_id=1, uuid=SERVICE_UUID, primary=True)
     trafgen.add_characteristic(
         srv_id=1, chr_id=1, uuid=CONTROL_UUID,

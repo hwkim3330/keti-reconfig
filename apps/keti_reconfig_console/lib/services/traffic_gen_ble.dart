@@ -48,6 +48,14 @@ class TrafficGenBle {
     if (!await FlutterBluePlus.isSupported) return;
     _connecting = true;
     try {
+      // If a previous session left the peripheral connected, re-use it instead of
+      // scanning (Android keeps GATT links alive across app restarts).
+      for (final d in FlutterBluePlus.connectedDevices) {
+        if (d.platformName == advName || d.advName == advName) {
+          await _attach(d, alreadyConnected: true);
+          if (connected) return;
+        }
+      }
       await _scanSub?.cancel();
       _scanSub = FlutterBluePlus.scanResults.listen((results) {
         for (final r in results) {
@@ -67,12 +75,19 @@ class TrafficGenBle {
     }
   }
 
-  Future<void> _attach(BluetoothDevice device) async {
-    if (_disposed || connected) return;
+  bool _attaching = false;
+
+  Future<void> _attach(BluetoothDevice device, {bool alreadyConnected = false}) async {
+    if (_disposed || connected || _attaching) return;
+    _attaching = true;
     try {
-      await FlutterBluePlus.stopScan();
-      await device.connect(
-          license: License.nonprofit, timeout: const Duration(seconds: 10));
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+      if (!alreadyConnected) {
+        await device.connect(
+            license: License.nonprofit, timeout: const Duration(seconds: 12));
+      }
       _device = device;
       try {
         await device.requestMtu(185);
@@ -95,6 +110,11 @@ class TrafficGenBle {
       _linkCtl.add(true);
     } catch (_) {
       _dropped();
+      try {
+        await device.disconnect();
+      } catch (_) {}
+    } finally {
+      _attaching = false;
     }
   }
 
