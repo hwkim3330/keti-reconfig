@@ -334,16 +334,26 @@ mat_rl = unlit(color=[0.10, 0.42, 0.95, 1.0], name="RearLidar-line")
 rl_z0, rl_z1 = -18.5, REAR_NEW_Z - 2.0
 add_line(0.0, 4.6, (rl_z0 + rl_z1) / 2, 0.16, 0.16, rl_z1 - rl_z0, mat_rl)
 
-# --- switches: solid yellow body + a clean KETI-logo label decal on top ---
+# --- switches: solid body + the TSN ZCU project badge decal on top (25:18) ---
+BADGE = "/home/kim/keti-reconfig/tools/tsn_zcu.png"
+DECAL_AR = 250.0 / 180.0   # matches the badge aspect (1478x1064)
+def badge_texture():
+    im = Image.open(BADGE).convert("RGBA")
+    im.thumbnail((720, 720))   # keep the glb small; still crisp on a box top
+    buf = io.BytesIO(); im.save(buf, "PNG")
+    g["images"].append({"uri": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()})
+    if not g["samplers"]:
+        g["samplers"].append({"magFilter":9729,"minFilter":9987,"wrapS":10497,"wrapT":10497})
+    g["textures"].append({"source": len(g["images"])-1, "sampler": 0})
+    return len(g["textures"]) - 1
 mat_body = unlit(color=[0.93, 0.80, 0.16, 1.0])   # switch body
-DECAL_AR = 250.0 / 180.0   # texture aspect (width:depth), matches the label PNG
+mat_badge = unlit(color=[1, 1, 1, 1], tex=badge_texture())
+g["materials"][mat_badge]["doubleSided"] = True
 def switch_box(cx, cy, cz, sx, sy, sz, name):
     add_line(cx, cy, cz, sx, sy, sz, mat_body)
-    m = unlit(color=[1, 1, 1, 1], tex=logo_label_texture(name))
-    g["materials"][m]["doubleSided"] = True
     # largest 25:18 rectangle that fits on the box top, centred
     w = min(sx * 0.9, sz * 0.9 * DECAL_AR); dd = w / DECAL_AR
-    add_decal(cx, cy + sy/2 + 0.03, cz, w, dd, m)
+    add_decal(cx, cy + sy/2 + 0.03, cz, w, dd, mat_badge)
 # box footprints are 25:18 (x:z) so the label decal fills the whole top
 FAx, FBx, FZ = 3.4, -3.4, 13.0
 switch_box(FAx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F A")   # front A (right)

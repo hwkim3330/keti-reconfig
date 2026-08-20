@@ -128,7 +128,7 @@ body {
   font-size: 0.8rem; font-weight: 600; color: var(--ink-3);
   border-top: 2px solid transparent; margin-top: -1px;
 }
-.tabbtn .tabico { font-size: 1.3rem; line-height: 1; }
+.tabbtn .tabico { width: 1.5rem; height: 1.5rem; }
 .tabbtn.active { color: var(--accent); border-top-color: var(--accent); }
 .tabbtn:active { opacity: 0.6; }
 
@@ -182,6 +182,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .tesla .glyph { font-size: 0.9rem; opacity: 0.95; }
+.tesla .glyph-svg { width: 1.15rem; height: 1.15rem; }
 /* crisp top highlight + grounded shadow = precise, physical */
 .tesla::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit;
