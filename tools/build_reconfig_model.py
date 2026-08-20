@@ -344,9 +344,9 @@ add_textured_cube(*BOX1, 0.9, mat_box1)
 add_ortho((-3.4, PY, 11.4), (-2.0, PY, REAR_FRONT), 0.16, mat_line2, order=(0, 2, 1))
 add_textured_cube(*BOX2, 0.9, mat_box2)
 
-# rear-centre LiDAR -> rear switch (straight down the spine, right angles)
+# rear-centre LiDAR -> rear switch (single clean line)
 mat_rl = unlit(color=[0.10, 0.42, 0.95, 1.0], name="RearLidar-line")
-add_ortho((0.0, 5.5, -18.5), (0.0, 4.5, REAR_NEW_Z - 1.98), 0.16, mat_rl, order=(2, 1, 0))
+add_line_between((0.0, 5.5, -18.5), (0.0, 4.6, REAR_NEW_Z - 1.98), 0.16, mat_rl)
 
 # --- switches: solid body + the TSN ZCU project badge decal on top (25:18) ---
 BADGE = "/home/kim/keti-reconfig/tools/tsn_zcu.png"
@@ -378,12 +378,12 @@ switch_box(0.0, 4.0, REAR_NEW_Z, 5.5, 1.8, 3.96, "TSN-R")  # rear (smaller)
 mat_fab = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FrontAB-line")
 add_line_between((FAx, 4.2, FZ), (FBx, 4.2, FZ), 0.16, mat_fab)
 
-# LiDAR -> switch, right-angle routes. Front-centre binds to ONE switch (A).
+# LiDAR -> switch: single clean lines (no zig-zag). Front-centre binds to ONE (A).
 mat_fll = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FLidar-line")
 FTOP = 4.2 + 2.4 / 2   # front box top height
-add_ortho((-8.5, 10.0, 16.2), (FBx, FTOP, FZ), 0.16, mat_fll, order=(0, 2, 1))  # FL -> B
-add_ortho((8.3, 10.0, 16.2), (FAx, FTOP, FZ), 0.16, mat_fll, order=(0, 2, 1))   # FR -> A
-add_ortho((0.0, 5.5, 18.5), (FAx, FTOP, FZ), 0.16, mat_fll, order=(2, 0, 1))    # FC -> A
+add_line_between((-8.5, 10.0, 16.2), (FBx, FTOP, FZ), 0.16, mat_fll)  # FL -> B
+add_line_between((8.3, 10.0, 16.2), (FAx, FTOP, FZ), 0.16, mat_fll)   # FR -> A
+add_line_between((0.0, 5.5, 18.5), (FAx, FTOP, FZ), 0.16, mat_fll)    # FC -> A
 
 # ---- pack buffer ----
 while len(pos) % 4: pos.append(0)
