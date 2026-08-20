@@ -372,6 +372,18 @@ async function boot() {
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
   $("btn-save").onclick = saveCurrentPreset;
 
+  // tabs: Monitor / Video / Config
+  document.querySelectorAll(".tabbtn").forEach((b) => {
+    b.onclick = () => {
+      document.querySelectorAll(".tabbtn").forEach((x) => x.classList.toggle("active", x === b));
+      const tab = b.dataset.tab;
+      document.querySelectorAll(".tab").forEach((t) => { t.hidden = (t.id !== "tab-" + tab); });
+      if (tab === "monitor") { chart.resize(); chart.draw(); }
+      const v = $("video");
+      if (tab === "video") v.play().catch(() => {}); // resume when shown
+    };
+  });
+
   // theme: default dark (best legibility on the panel), remembered per device
   let theme = "dark";
   try { theme = localStorage.getItem("tg-theme") || "dark"; } catch (e) {}

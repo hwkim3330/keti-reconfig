@@ -103,16 +103,34 @@ body {
 .pill.bad  { color: var(--bad-d); background: color-mix(in srgb, var(--bad) 12%, #fff); }
 .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.05rem; margin-left: 0.2rem; }
 
-/* ---- portrait column layout (default) ---- */
-.grid {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.7rem;
-  min-height: 0;
-  overflow: hidden;               /* the page never scrolls; only the stream list does */
+/* ---- tabbed layout ---- */
+.tabs { flex: 1 1 auto; min-height: 0; position: relative; }
+.tab {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; gap: 0.7rem;
+  padding: 0.8rem;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
+.tab[hidden] { display: none; }
+
+.tabbar {
+  flex: 0 0 auto;
+  display: flex;
+  border-top: 1px solid var(--hair);
+  background: var(--topbar);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+.tabbtn {
+  flex: 1 1 0; border: none; background: none; cursor: pointer;
+  padding: 0.7rem 0.4rem 0.9rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  font-size: 0.8rem; font-weight: 600; color: var(--ink-3);
+  border-top: 2px solid transparent; margin-top: -1px;
+}
+.tabbtn .tabico { font-size: 1.3rem; line-height: 1; }
+.tabbtn.active { color: var(--accent); border-top-color: var(--accent); }
+.tabbtn:active { opacity: 0.6; }
 
 .card {
   background: var(--card);
@@ -132,13 +150,14 @@ body {
 .bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width 0.3s cubic-bezier(0.2,0.7,0.2,1); }
 .bar-fill.alt { background: var(--accent-2); }
 
-/* ---- protected video ---- */
-.video-card { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0.4rem; }
-.video-card video { width: 100%; max-height: 26vh; border-radius: 0.6rem; background: #000; object-fit: contain; }
+/* ---- protected video (fills the Video tab) ---- */
+.video-card { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.5rem; }
+.video-card video { width: 100%; flex: 1 1 auto; min-height: 0; border-radius: 0.6rem; background: #000; object-fit: contain; }
 .video-note { font-size: 0.7rem; color: var(--ink-3); font-weight: 500; letter-spacing: 0; }
+.video-hint { font-size: 0.8rem; color: var(--ink-2); line-height: 1.4; flex: 0 0 auto; }
 
-/* ---- chart ---- */
-.chart-card { flex: 0 0 22vh; min-height: 150px; display: flex; flex-direction: column; gap: 0.4rem; }
+/* ---- chart (fills the Monitor tab under the gauges) ---- */
+.chart-card { flex: 1 1 auto; min-height: 200px; display: flex; flex-direction: column; gap: 0.4rem; }
 .chart-legend { display: flex; gap: 1rem; }
 .chart-legend .lg { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: var(--ink-2); font-weight: 600; }
 .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; }
@@ -239,12 +258,12 @@ body {
 }
 
 /* ---- streams ---- */
-.streams { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.streams { display: flex; flex-direction: column; }
 .mini { background: var(--inset); color: var(--ink); border: none; border-radius: 0.5rem; padding: 0.45rem 0.5rem; font-size: 0.8rem; font-weight: 600; }
 .plan { font-size: 0.74rem; color: var(--ink-2); font-variant-numeric: tabular-nums; padding: 0 0 0.6rem; }
 .plan b { color: var(--ink); font-weight: 700; }
 .plan .over { color: var(--bad-d); font-weight: 700; }
-#stream-list { display: flex; flex-direction: column; gap: 0.6rem; flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#stream-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
 .stream {
   background: var(--inset); border-radius: 0.9rem;
@@ -274,23 +293,6 @@ body {
 /* running lock */
 .locked input, .locked select, .locked .tog, .locked .del, .locked .chip, .locked .text-btn { pointer-events: none; opacity: 0.55; }
 
-/* ---- landscape: two columns (wide LCD / desktop) ---- */
-@media (min-aspect-ratio: 1/1) and (min-width: 900px) {
-  .grid {
-    display: grid;
-    grid-template-columns: 1.55fr 1fr;
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas:
-      "gauges   chart"
-      "actions  chart"
-      "presets  streams";
-    overflow: hidden;
-  }
-  .gauges { grid-area: gauges; }
-  .chart-card { grid-area: chart; flex: initial; height: auto; }
-  .actions { grid-area: actions; }
-  .presets-card { grid-area: presets; align-self: start; }
-  .streams { grid-area: streams; overflow-y: auto; }
-  #stream-list { overflow-y: auto; }
-  .msg { display: none; }
-}
+/* streams list scrolls within the Config tab */
+.streams { display: flex; flex-direction: column; flex: 0 0 auto; }
+#stream-list { display: flex; flex-direction: column; gap: 0.6rem; }
