@@ -290,7 +290,7 @@ class _CarViewerScreenState extends ConsumerState<CarViewerScreen> {
           ModelViewer(
             backgroundColor: const Color(0xFFF2F4F7),
             id: 'car',
-            src: 'lib/assets/roii_reconfig.glb',
+            src: 'lib/assets/roii_reconfig_recon.glb',
             alt: 'PLEOS reconfigurable E/E architecture vehicle',
             interpolationDecay: 200,
             disablePan: true,

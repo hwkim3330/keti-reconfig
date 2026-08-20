@@ -252,7 +252,7 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
           _viewer ??= ModelViewer(
             backgroundColor: const Color(0xFFF2F4F7),
             id: 'car',
-            src: 'lib/assets/roii_reconfig.glb',
+            src: 'lib/assets/roii_reconfig_recon.glb',
             alt: 'KETI reconfigurable vehicle',
             disablePan: true,
             disableTap: true,

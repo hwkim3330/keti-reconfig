@@ -90,7 +90,7 @@ const String modelViewerScript = '''
                 const hotspotHTML = \`
                     <button class="label-hotspot\${switchClass}\${injectorClass}"
                             slot="hotspot-\${h.slotName}"
-                            data-position="\${h.position}"
+                            data-position="\${h.anchor || h.position}"
                             data-normal="0m 0m 0m"
                             data-target="\${h.dataTarget}"
                             data-orbit="\${h.dataOrbit}">
@@ -308,6 +308,8 @@ const String modelViewerScript = '''
             setAlphaModeForEntries(trackedCarpaint, 'BLEND');
             applyAlpha(trackedTranslucentParts, isShowingParts ? 0.15 : 0);
             setAlphaModeForEntries(trackedTranslucentParts, 'BLEND');
+            // The Path 1/2 cylinder bodies were removed from the model itself, so
+            // the connection segments carry each path as a line with no cylinder.
         };
 
         const runPartsAnimation = (targetVisible) => {
