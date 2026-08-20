@@ -84,7 +84,7 @@ def world_center(i):
                     pts.append((world[i] @ np.array([xx, yy, zz, 1.0]))[:3])
     if not pts: return None
     pts = np.array(pts); return (pts.min(0) + pts.max(0)) / 2
-REMOVE_ECUS = {"ACU_IT", "Sub_VCU", "CMU", "ACU_NO", "EDR/DSSA"}
+REMOVE_ECUS = {"ACU_IT", "Sub_VCU", "CMU", "ACU_NO", "EDR/DSSA", "VCU", "TCU"}
 ecu_centers = []
 for i, n in enumerate(nodes):
     if n.get("mesh") is None: continue
@@ -104,7 +104,7 @@ for i, n in enumerate(nodes):
 print("removed ECUs:", len(ecu_centers), "wireframes:", removed_wf)
 
 # also remove the wires/ports that fed those now-gone ECUs (they dangle otherwise)
-REMOVE_TOKENS = ("ACU_IT", "Sub_VCU", "CMU", "ACU_NO", "EDR", "DSSA")
+REMOVE_TOKENS = ("ACU_IT", "Sub_VCU", "CMU", "ACU_NO", "EDR", "DSSA", "VCU", "TCU")
 removed_links = 0
 for i, n in enumerate(nodes):
     if n.get("mesh") is None: continue
@@ -145,9 +145,10 @@ hid_fl = 0
 for i, n in enumerate(nodes):
     if n.get("mesh") is None: continue
     nm4 = mats.get(meshes[n["mesh"]]["primitives"][0].get("material"), "")
-    if (nm4.startswith("connection-") or nm4.startswith("port-")) and "Lidar-FrontZC" in nm4:
+    if (nm4.startswith("connection-") or nm4.startswith("port-")) and \
+       ("Lidar-FrontZC" in nm4 or "FrontZC-Path" in nm4):   # front lidar blobs + leftover path stubs
         n.pop("mesh", None); hid_fl += 1
-print("hid front-lidar links:", hid_fl)
+print("hid front-lidar/path stubs:", hid_fl)
 
 # (front/rear switches are re-added as textured boxes in the geometry section below)
 
@@ -338,7 +339,7 @@ add_line(0.0, 4.6, (rl_z0 + rl_z1) / 2, 0.16, 0.16, rl_z1 - rl_z0, mat_rl)
 BADGE = "/home/kim/keti-reconfig/tools/tsn_zcu.png"
 DECAL_AR = 250.0 / 180.0   # matches the badge aspect (1478x1064)
 def badge_texture():
-    im = Image.open(BADGE).convert("RGBA")
+    im = Image.open(BADGE).convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT)  # un-mirror for the top decal
     im.thumbnail((720, 720))   # keep the glb small; still crisp on a box top
     buf = io.BytesIO(); im.save(buf, "PNG")
     g["images"].append({"uri": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()})
@@ -358,7 +359,11 @@ def switch_box(cx, cy, cz, sx, sy, sz, name):
 FAx, FBx, FZ = 3.4, -3.4, 13.0
 switch_box(FAx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F A")   # front A (right)
 switch_box(FBx, 4.2, FZ, 4.6, 2.4, 3.31, "TSN-F B")   # front B (left)
-switch_box(0.0, 4.0, REAR_NEW_Z, 8.0, 2.0, 5.76, "TSN-R")  # rear
+switch_box(0.0, 4.0, REAR_NEW_Z, 5.5, 1.8, 3.96, "TSN-R")  # rear (smaller)
+
+# line linking the two front switches (A <-> B)
+mat_fab = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FrontAB-line")
+add_line_between((FAx, 4.2, FZ), (FBx, 4.2, FZ), 0.16, mat_fab)
 
 # clean lidar lines into the front switches (blue)
 mat_fll = unlit(color=[0.10, 0.42, 0.95, 1.0], name="FLidar-line")
