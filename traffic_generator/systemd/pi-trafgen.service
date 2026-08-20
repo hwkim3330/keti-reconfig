@@ -1,0 +1,19 @@
+[Unit]
+Description=pi-trafgen kernel-pktgen traffic generator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# pktgen writes to /proc/net/pktgen, which is root-only.
+User=root
+WorkingDirectory=/opt/pi-trafgen
+Environment=TRAFGEN_CONFIG=/etc/pi-trafgen/config.json
+ExecStartPre=/sbin/modprobe pktgen
+ExecStart=/opt/pi-trafgen/venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=2
+# pktgen keeps running in the kernel if we are killed mid-flight; stop it cleanly.
+ExecStopPost=/bin/sh -c 'echo stop > /proc/net/pktgen/pgctrl 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

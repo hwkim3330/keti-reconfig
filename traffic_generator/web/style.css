@@ -1,0 +1,157 @@
+/* pi-trafgen kiosk UI - dark, for a 7" 800x480 or 1024x600 touch panel.
+   Everything is sized in rem off a fluid root so the same layout fits both. */
+
+:root {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --surface-2: #232322;
+  --line: #34342f;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-3: #85857b;
+  --accent: #3987e5;   /* throughput */
+  --accent-2: #d95926; /* packet rate */
+  --ok: #199e70;
+  --warn: #c98500;
+  --bad: #e66767;
+  --font: -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  font-size: 15px;
+}
+@media (min-width: 1000px) { :root { font-size: 17px; } }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font);
+  background: var(--surface-0);
+  color: var(--ink);
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ---- top bar ---- */
+.topbar {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; letter-spacing: 0.02em; }
+.brand .logo { color: var(--accent); font-size: 1.3rem; }
+.topstat { display: flex; gap: 0.4rem; margin-left: auto; flex-wrap: wrap; }
+.pill {
+  font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.pill.good { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.pill.bad  { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.topclock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.1rem; min-width: 4.2rem; text-align: right; }
+
+/* ---- layout grid ---- */
+.grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "gauges  controls"
+    "chart   streams";
+  gap: 0.6rem;
+  padding: 0.6rem;
+  min-height: 0;
+}
+.gauges   { grid-area: gauges; }
+.chart-card { grid-area: chart; }
+.controls { grid-area: controls; }
+.streams  { grid-area: streams; }
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 0.7rem;
+  min-height: 0;
+}
+
+/* ---- gauges ---- */
+.gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; }
+.gauge { display: flex; flex-direction: column; gap: 0.3rem; }
+.gauge-label { font-size: 0.7rem; letter-spacing: 0.08em; color: var(--ink-3); }
+.gauge-value { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.gauge-value small { font-size: 0.85rem; font-weight: 600; color: var(--ink-3); margin-left: 0.3rem; }
+.gauge-sub { font-size: 0.75rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.bar { height: 0.5rem; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width 0.25s ease; }
+.bar-fill.alt { background: var(--accent-2); }
+
+/* ---- chart ---- */
+.chart-card { padding: 0.4rem; }
+#chart { width: 100%; height: 100%; display: block; }
+
+/* ---- controls ---- */
+.controls { display: flex; flex-direction: column; gap: 0.6rem; }
+.row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.presets { flex: 1 1 auto; align-content: flex-start; overflow-y: auto; }
+.chip {
+  flex: 1 1 45%;
+  padding: 0.55rem 0.5rem;
+  border-radius: 0.55rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.85rem; font-weight: 600;
+  text-align: center;
+}
+.chip:active { background: var(--surface-0); }
+.big-actions { flex: 0 0 auto; }
+.btn {
+  border: none; border-radius: 0.6rem; color: #fff; font-weight: 800;
+  font-size: 1rem; padding: 0.9rem 1rem; flex: 1 1 0;
+}
+.btn:active { filter: brightness(0.85); }
+.btn.start { background: var(--ok); }
+.btn.stop  { background: var(--bad); }
+.btn.ghost { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); font-size: 0.85rem; padding: 0.45rem 0.8rem; flex: 0 0 auto; }
+.btn[disabled] { opacity: 0.4; }
+.msg { font-size: 0.8rem; color: var(--ink-2); min-height: 1.1rem; }
+.msg.err { color: var(--bad); }
+
+/* ---- streams ---- */
+.streams { display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden; }
+.streams-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; letter-spacing: 0.08em; color: var(--ink-3); }
+.streams-head > div { display: flex; gap: 0.4rem; align-items: center; }
+.mini { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 0.4rem; padding: 0.35rem 0.4rem; font-size: 0.8rem; }
+.plan { font-size: 0.75rem; color: var(--ink-2); font-variant-numeric: tabular-nums; padding: 0.3rem 0.1rem; border-bottom: 1px solid var(--line); }
+.plan b { color: var(--ink); }
+.plan .over { color: var(--bad); }
+#stream-list { overflow-y: auto; display: flex; flex-direction: column; gap: 0.45rem; }
+
+.stream {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 0.55rem;
+  padding: 0.5rem; display: grid; gap: 0.4rem;
+}
+.stream.off { opacity: 0.45; }
+.stream-top { display: flex; align-items: center; gap: 0.4rem; }
+.stream-top input.name { flex: 1 1 auto; background: transparent; border: none; color: var(--ink); font-weight: 700; font-size: 0.9rem; }
+.stream-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+.fld { display: flex; flex-direction: column; gap: 0.15rem; }
+.fld label { font-size: 0.62rem; color: var(--ink-3); letter-spacing: 0.04em; }
+.fld input, .fld select {
+  background: var(--surface-0); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 0.35rem; padding: 0.4rem; font-size: 0.82rem; width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.tog { width: 2.6rem; height: 1.5rem; border-radius: 999px; background: var(--surface-0); border: 1px solid var(--line); position: relative; flex: 0 0 auto; }
+.tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 1.1rem; height: 1.1rem; border-radius: 999px; background: var(--ink-3); transition: 0.15s; }
+.tog.on { background: color-mix(in srgb, var(--ok) 40%, var(--surface-0)); }
+.tog.on::after { left: calc(100% - 1.2rem); background: var(--ok); }
+.del { background: transparent; border: none; color: var(--ink-3); font-size: 1.1rem; padding: 0 0.3rem; }
+
+/* running lock */
+.locked input, .locked select, .locked .tog, .locked .del, .locked .chip, .locked #btn-add { pointer-events: none; opacity: 0.6; }

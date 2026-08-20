@@ -6,3 +6,6 @@ node_modules/
 *.iml
 .kotlin/
 docs/
+__pycache__/
+*.pyc
+venv/

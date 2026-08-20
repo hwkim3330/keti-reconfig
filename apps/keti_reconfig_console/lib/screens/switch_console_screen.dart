@@ -9,6 +9,7 @@ import '../core/js_scripts.dart';
 import '../providers/keti_link_provider.dart';
 import '../providers/viewer_service_provider.dart';
 import '../services/keti_link_service.dart';
+import 'traffic_gen_screen.dart';
 
 /// The console: switch port state on one side, the two fault-injection paths on the other.
 ///
@@ -525,7 +526,41 @@ class _Header extends StatelessWidget {
           if (state.scanning)
             const Text('scanning...',
                 style: TextStyle(fontSize: 11, color: Color(0xFF7A8699))),
+          const SizedBox(width: 10),
+          _TrafficButton(),
         ],
+      ),
+    );
+  }
+}
+
+/// Opens the traffic generator console. It drives a separate IP node (the Pi
+/// running pi-trafgen) over WiFi, not one of the BLE switches, so it lives behind
+/// its own screen rather than in this panel.
+class _TrafficButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF4A90D9),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const TrafficGenScreen()),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.speed_rounded, size: 16, color: Colors.white),
+              SizedBox(width: 6),
+              Text('Traffic',
+                  style: TextStyle(
+                      color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
       ),
     );
   }

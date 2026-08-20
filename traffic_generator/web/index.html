@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>pi-trafgen</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▚</span>
+      <span>pi-trafgen</span>
+    </div>
+    <div class="topstat">
+      <span class="pill" id="iface-pill">eth0</span>
+      <span class="pill" id="link-pill">— Mbps</span>
+      <span class="pill" id="pktgen-pill">pktgen ?</span>
+    </div>
+    <div class="topclock" id="elapsed">00:00</div>
+  </header>
+
+  <main class="grid">
+    <!-- live gauges -->
+    <section class="card gauges">
+      <div class="gauge">
+        <div class="gauge-label">THROUGHPUT</div>
+        <div class="gauge-value"><span id="mbps">0.0</span><small>Mbps</small></div>
+        <div class="bar"><div class="bar-fill" id="mbps-bar"></div></div>
+        <div class="gauge-sub"><span id="mbps-pct">0%</span> of line rate</div>
+      </div>
+      <div class="gauge">
+        <div class="gauge-label">PACKET RATE</div>
+        <div class="gauge-value"><span id="pps">0</span><small>pps</small></div>
+        <div class="bar"><div class="bar-fill alt" id="pps-bar"></div></div>
+        <div class="gauge-sub"><span id="kpps">0.0</span> kpps</div>
+      </div>
+      <div class="gauge">
+        <div class="gauge-label">SENT</div>
+        <div class="gauge-value"><span id="sent">0</span><small>pkts</small></div>
+        <div class="gauge-sub"><span id="errdrop">0 err / 0 drop</span></div>
+      </div>
+    </section>
+
+    <!-- live chart -->
+    <section class="card chart-card">
+      <canvas id="chart"></canvas>
+    </section>
+
+    <!-- controls -->
+    <section class="card controls">
+      <div class="row presets" id="presets"></div>
+      <div class="row big-actions">
+        <button class="btn stop" id="btn-stop">■ STOP</button>
+        <button class="btn start" id="btn-start">▶ START</button>
+      </div>
+      <div class="msg" id="msg"></div>
+    </section>
+
+    <!-- stream editor -->
+    <section class="card streams">
+      <div class="streams-head">
+        <span>STREAMS</span>
+        <div>
+          <select id="iface-select" class="mini"></select>
+          <button class="btn ghost" id="btn-add">+ stream</button>
+        </div>
+      </div>
+      <div class="plan" id="plan"></div>
+      <div id="stream-list"></div>
+    </section>
+  </main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
