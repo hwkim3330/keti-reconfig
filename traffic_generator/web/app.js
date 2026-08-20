@@ -389,8 +389,23 @@ async function boot() {
   renderUserPresets();
   renderStreams();
   refreshPlan();
+  loadVideo();
   connectWs();
   requestAnimationFrame(loop);
+}
+
+// The "protected video flow" - plays the sample clip served from the Pi. This is
+// the stream TSN is meant to protect; under a flood with TSN off it stutters.
+async function loadVideo() {
+  try {
+    const m = await api("/api/media");
+    if (!m.videos || !m.videos.length) return;
+    const v = $("video");
+    v.src = "/media/" + encodeURIComponent(m.videos[0]);
+    $("video-note").textContent = m.videos[0];
+    $("video-card").hidden = false;
+    v.play().catch(() => {});
+  } catch (e) { /* no media - hide the card */ }
 }
 
 boot();

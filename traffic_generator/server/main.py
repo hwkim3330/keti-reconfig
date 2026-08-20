@@ -28,6 +28,21 @@ USER_PRESETS_PATH = pathlib.Path(
     os.environ.get("TRAFGEN_USER_PRESETS", "/etc/pi-trafgen/user_presets.json")
 )
 
+
+def _find_media_dir() -> pathlib.Path | None:
+    env = os.environ.get("TRAFGEN_MEDIA")
+    cands = [env] if env else []
+    cands += ["/home/keti/media", "/home/pi/media", str(pathlib.Path.home() / "media"),
+              str(ROOT / "media")]
+    for c in cands:
+        if c and pathlib.Path(c).is_dir():
+            return pathlib.Path(c)
+    return None
+
+
+MEDIA_DIR = _find_media_dir()
+VIDEO_EXT = {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+
 SAMPLE_PERIOD = 0.5
 HISTORY_LEN = 240  # 2 minutes at 0.5 s
 
@@ -334,6 +349,18 @@ def api_plan() -> dict:
     }
 
 
+@app.get("/api/media")
+def api_media() -> dict:
+    """Video files available to play in the UI."""
+    if MEDIA_DIR is None:
+        return {"dir": None, "videos": []}
+    vids = sorted(
+        f.name for f in MEDIA_DIR.iterdir()
+        if f.is_file() and f.suffix.lower() in VIDEO_EXT
+    )
+    return {"dir": str(MEDIA_DIR), "videos": vids}
+
+
 # --------------------------------------------------------------------------
 # live push
 # --------------------------------------------------------------------------
@@ -406,5 +433,9 @@ async def ws(sock: WebSocket) -> None:
 def index() -> FileResponse:
     return FileResponse(WEB / "index.html")
 
+
+# video files (served with range support by StaticFiles, so <video> can seek)
+if MEDIA_DIR is not None:
+    app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
 app.mount("/", StaticFiles(directory=WEB), name="web")
