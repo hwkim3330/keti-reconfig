@@ -2,6 +2,7 @@
 /* pi-trafgen kiosk front-end. No build step, no external libs - it runs off the
    Pi's loopback and must work with the network cable pulled. */
 
+const C = { blue: "#1668b3", orange: "#ff6b1f" };
 const $ = (id) => document.getElementById(id);
 const api = (path, opts) => fetch(path, opts).then((r) => r.json().then((j) => {
   if (!r.ok) throw new Error(j.detail || r.statusText);
@@ -46,25 +47,25 @@ const chart = (() => {
     const maxMbps = Math.max(10, ...mbps) * 1.15;
     const maxPps = Math.max(1000, ...pps) * 1.15;
 
-    // grid
-    ctx.strokeStyle = "#2a2a27"; ctx.lineWidth = 1;
-    ctx.fillStyle = "#85857b"; ctx.font = "10px sans-serif";
+    // grid + axis ticks
+    ctx.font = "600 10px -apple-system, sans-serif";
     ctx.textBaseline = "middle";
     for (let i = 0; i <= 4; i++) {
       const y = pad.t + (ph * i) / 4;
+      ctx.strokeStyle = "#ececf1"; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
       ctx.textAlign = "right";
-      ctx.fillStyle = "#3987e5";
-      ctx.fillText(fmt(maxMbps * (1 - i / 4)), pad.l - 5, y);
+      ctx.fillStyle = C.blue;
+      ctx.fillText(fmt(maxMbps * (1 - i / 4)), pad.l - 6, y);
       ctx.textAlign = "left";
-      ctx.fillStyle = "#d95926";
-      ctx.fillText(compact(maxPps * (1 - i / 4)), pad.l + pw + 5, y);
+      ctx.fillStyle = C.orange;
+      ctx.fillText(compact(maxPps * (1 - i / 4)), pad.l + pw + 6, y);
     }
 
-    const plot = (data, max, color) => {
+    const plot = (data, max, color, fill) => {
       if (data.length < 2) return;
-      ctx.strokeStyle = color; ctx.lineWidth = 2;
-      ctx.lineJoin = "round";
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round"; ctx.lineCap = "round";
       ctx.beginPath();
       data.forEach((v, i) => {
         const x = pad.l + (pw * i) / (data.length - 1);
@@ -72,17 +73,11 @@ const chart = (() => {
         i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       });
       ctx.stroke();
-      // fill under
       ctx.lineTo(pad.l + pw, pad.t + ph); ctx.lineTo(pad.l, pad.t + ph); ctx.closePath();
-      ctx.fillStyle = color + "22"; ctx.fill();
+      ctx.fillStyle = fill; ctx.fill();
     };
-    plot(mbps, maxMbps, "#3987e5");
-    plot(pps, maxPps, "#d95926");
-
-    // axis captions
-    ctx.textBaseline = "top"; ctx.font = "10px sans-serif";
-    ctx.textAlign = "left"; ctx.fillStyle = "#3987e5"; ctx.fillText("Mbps", pad.l, 2);
-    ctx.textAlign = "right"; ctx.fillStyle = "#d95926"; ctx.fillText("pps", pad.l + pw, 2);
+    plot(mbps, maxMbps, C.blue, "rgba(22,104,179,0.10)");
+    plot(pps, maxPps, C.orange, "rgba(255,107,31,0.09)");
   }
 
   return { draw, resize };
@@ -236,20 +231,74 @@ function pushConfig() {
 }
 
 // ---------------------------------------------------------------- presets
+function chip(title, sub, { custom = false, onTap, onDelete } = {}) {
+  const b = document.createElement("button");
+  b.className = "chip" + (custom ? " custom" : "");
+  const t = document.createElement("span"); t.className = "chip-title"; t.textContent = title;
+  b.appendChild(t);
+  if (sub) { const s = document.createElement("span"); s.className = "chip-sub"; s.textContent = sub; b.appendChild(s); }
+  b.onclick = onTap;
+  if (onDelete) {
+    const d = document.createElement("button");
+    d.className = "chip-del"; d.textContent = "✕";
+    d.onclick = (ev) => { ev.stopPropagation(); onDelete(); };
+    b.appendChild(d);
+  }
+  return b;
+}
+
 function renderPresets() {
   const box = $("presets"); box.innerHTML = "";
   const p = state.system.presets || {};
   Object.entries(p).forEach(([key, meta]) => {
-    const b = document.createElement("button");
-    b.className = "chip"; b.textContent = meta.label; b.title = meta.note;
-    b.onclick = async () => {
-      try {
-        state.config = await api(`/api/preset/${key}`, { method: "POST" });
-        renderStreams(); refreshPlan(); showMsg(meta.note);
-      } catch (e) { showMsg(e.message, true); }
-    };
-    box.appendChild(b);
+    box.appendChild(chip(meta.label, null, {
+      onTap: async () => {
+        try {
+          state.config = await api(`/api/preset/${key}`, { method: "POST" });
+          renderStreams(); refreshPlan(); showMsg(meta.note);
+        } catch (e) { showMsg(e.message, true); }
+      },
+    })).title = meta.note;
   });
+}
+
+function summary(s) {
+  const rate = s.unthrottled ? "max" : `${fmt(s.mbps, 1)} Mbps`;
+  return `${s.streams} stream${s.streams === 1 ? "" : "s"} · ${rate}`;
+}
+
+async function renderUserPresets() {
+  const box = $("user-presets"); box.innerHTML = "";
+  let data;
+  try { data = (await api("/api/userpresets")).presets || {}; }
+  catch { return; }
+  Object.entries(data).forEach(([name, s]) => {
+    box.appendChild(chip(name, summary(s), {
+      custom: true,
+      onTap: async () => {
+        try {
+          state.config = await api(`/api/userpresets/${encodeURIComponent(name)}/load`, { method: "POST" });
+          renderStreams(); refreshPlan(); showMsg(`loaded "${name}"`);
+        } catch (e) { showMsg(e.message, true); }
+      },
+      onDelete: async () => {
+        try {
+          await api(`/api/userpresets/${encodeURIComponent(name)}`, { method: "DELETE" });
+          renderUserPresets(); showMsg(`deleted "${name}"`);
+        } catch (e) { showMsg(e.message, true); }
+      },
+    }));
+  });
+}
+
+async function saveCurrentPreset() {
+  if (state.running) { showMsg("stop before saving", true); return; }
+  const name = (window.prompt("Save current setup as:", "") || "").trim();
+  if (!name) return;
+  try {
+    await api(`/api/userpresets/${encodeURIComponent(name)}`, { method: "POST" });
+    renderUserPresets(); showMsg(`saved "${name}"`);
+  } catch (e) { showMsg(e.message, true); }
 }
 
 // ---------------------------------------------------------------- iface select
@@ -294,6 +343,7 @@ async function boot() {
     catch (e) { showMsg(e.message, true); }
   };
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
+  $("btn-save").onclick = saveCurrentPreset;
 
   try {
     state.system = await api("/api/system");
@@ -302,6 +352,7 @@ async function boot() {
 
   renderIfaces();
   renderPresets();
+  renderUserPresets();
   renderStreams();
   refreshPlan();
   connectWs();

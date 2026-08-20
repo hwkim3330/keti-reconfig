@@ -24,6 +24,9 @@ from . import netstat, pktgen, presets
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 CONFIG_PATH = pathlib.Path(os.environ.get("TRAFGEN_CONFIG", "/etc/pi-trafgen/config.json"))
+USER_PRESETS_PATH = pathlib.Path(
+    os.environ.get("TRAFGEN_USER_PRESETS", "/etc/pi-trafgen/user_presets.json")
+)
 
 SAMPLE_PERIOD = 0.5
 HISTORY_LEN = 240  # 2 minutes at 0.5 s
@@ -82,6 +85,22 @@ def save_config(cfg: ConfigModel) -> None:
         CONFIG_PATH.write_text(json.dumps(cfg.model_dump(), indent=2))
     except OSError:
         pass  # a read-only rootfs shouldn't take the UI down
+
+
+def load_user_presets() -> dict[str, dict]:
+    try:
+        data = json.loads(USER_PRESETS_PATH.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_user_presets(presets: dict[str, dict]) -> None:
+    try:
+        USER_PRESETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        USER_PRESETS_PATH.write_text(json.dumps(presets, indent=2))
+    except OSError:
+        pass
 
 
 class State:
@@ -170,6 +189,69 @@ def api_preset(key: str) -> dict:
     state.config = ConfigModel(iface=iface, streams=streams)
     save_config(state.config)
     return state.config.model_dump()
+
+
+def _summarise(cfg: ConfigModel) -> dict:
+    """Planned totals for a stored config, for the chip subtitle."""
+    total_pps = total_bps = 0.0
+    for m in cfg.streams:
+        if not m.enabled:
+            continue
+        s = to_stream(m, cfg.iface)
+        pps = s.target_pps()
+        total_pps += pps
+        total_bps += pktgen.wire_bps(pps, s.frame_size) if pps else 0.0
+    return {
+        "streams": len([s for s in cfg.streams if s.enabled]),
+        "mbps": total_bps / 1e6,
+        "pps": total_pps,
+        "unthrottled": any(s.enabled and s.rate_mode == "max" for s in cfg.streams),
+    }
+
+
+@app.get("/api/userpresets")
+def api_userpresets() -> dict:
+    out = {}
+    for name, raw in load_user_presets().items():
+        try:
+            out[name] = _summarise(ConfigModel(**raw))
+        except (ValueError, TypeError):
+            continue
+    return {"presets": out}
+
+
+@app.post("/api/userpresets/{name}")
+def api_userpreset_save(name: str) -> dict:
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "empty name")
+    presets = load_user_presets()
+    presets[name] = state.config.model_dump()
+    save_user_presets(presets)
+    return {"saved": name, "count": len(presets)}
+
+
+@app.post("/api/userpresets/{name}/load")
+def api_userpreset_load(name: str) -> dict:
+    if runner.running:
+        raise HTTPException(409, "stop the generator before loading a preset")
+    presets = load_user_presets()
+    if name not in presets:
+        raise HTTPException(404, f"no saved preset {name!r}")
+    try:
+        state.config = ConfigModel(**presets[name])
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, f"stored preset is invalid: {exc}") from exc
+    save_config(state.config)
+    return state.config.model_dump()
+
+
+@app.delete("/api/userpresets/{name}")
+def api_userpreset_delete(name: str) -> dict:
+    presets = load_user_presets()
+    presets.pop(name, None)
+    save_user_presets(presets)
+    return {"deleted": name, "count": len(presets)}
 
 
 @app.get("/api/status")
