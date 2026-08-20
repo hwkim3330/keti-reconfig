@@ -5,7 +5,11 @@
 set -euo pipefail
 
 KIOSK=0
-[[ "${1:-}" == "--kiosk" ]] && KIOSK=1
+BLE=0
+for a in "$@"; do
+  [[ "$a" == "--kiosk" ]] && KIOSK=1
+  [[ "$a" == "--ble" ]] && BLE=1
+done
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 DEST=/opt/pi-trafgen
@@ -48,6 +52,23 @@ mkdir -p /etc/pi-trafgen
 cp "$SRC/systemd/pi-trafgen.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now pi-trafgen.service
+
+# 5b. BLE peripheral (optional) - lets the tablet start/stop over Bluetooth.
+#     Uses the SYSTEM python + bluezero (needs the apt dbus/gi bindings), so it
+#     is installed outside the venv.
+if [[ $BLE -eq 1 ]]; then
+  apt-get install -y python3-dbus python3-gi >/dev/null 2>&1 || true
+  # bluezero isn't packaged on bookworm; pip into the system env.
+  python3 -c "import bluezero" 2>/dev/null || \
+    pip3 install --break-system-packages --quiet bluezero 2>/dev/null || \
+    pip3 install --quiet bluezero || true
+  # the peripheral imports server.ble_gatt, so ship the code where WorkingDirectory points
+  cp -r "$SRC/server" "$DEST/"
+  cp "$SRC/systemd/pi-trafgen-ble.service" /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now pi-trafgen-ble.service
+  echo "BLE peripheral enabled - advertises as KETI-TRAFGEN"
+fi
 
 # 6. kiosk (optional) - the Pi's own panel.
 #    Raspberry Pi OS bookworm runs a Wayland desktop, so the browser is launched
