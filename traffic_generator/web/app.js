@@ -177,7 +177,7 @@ function renderStreams() {
     const grid = document.createElement("div");
     grid.className = "stream-grid";
     FIELDS.forEach(([key, lbl, type]) => {
-      const f = document.createElement("div"); f.className = "fld";
+      const f = document.createElement("div"); f.className = "fld" + (key === "pcp" ? " pcp" : "");
       const l = document.createElement("label"); l.textContent = lbl;
       const inp = document.createElement("input");
       inp.type = type;

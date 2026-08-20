@@ -18,8 +18,12 @@ Two things bite everyone who scripts this by hand:
 from __future__ import annotations
 
 import os
+import re
 import threading
 from dataclasses import dataclass, field
+
+_SOFAR_RE = re.compile(r"pkts-sofar:\s*(\d+)")
+_ERRORS_RE = re.compile(r"errors:\s*(\d+)")
 
 PKTGEN_DIR = "/proc/net/pktgen"
 PGCTRL = os.path.join(PKTGEN_DIR, "pgctrl")
@@ -256,3 +260,31 @@ class Runner:
             except OSError as exc:
                 out[s.device] = f"<unreadable: {exc}>"
         return out
+
+    def wire_totals(self) -> tuple[int, int, int]:
+        """Authoritative TX totals straight from pktgen's own counters.
+
+        Returns (packets, on-wire bytes, errors) summed across every configured
+        device. This is read instead of the interface's sysfs tx_packets because
+        clone_skb (which we use to reach line rate) leaves the sysfs counter flat
+        on some drivers - bcmgenet on the Pi is one - while pktgen's pkts-sofar is
+        always correct.
+        """
+        total_pkts = 0
+        total_bytes = 0
+        total_errs = 0
+        for s in self._streams:
+            try:
+                with open(s.procfile) as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            m = _SOFAR_RE.search(text)
+            if m:
+                pkts = int(m.group(1))
+                total_pkts += pkts
+                total_bytes += pkts * (s.frame_size + WIRE_OVERHEAD)
+            e = _ERRORS_RE.search(text)
+            if e:
+                total_errs += int(e.group(1))
+        return total_pkts, total_bytes, total_errs

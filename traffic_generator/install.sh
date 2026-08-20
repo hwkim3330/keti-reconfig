@@ -35,6 +35,8 @@ apt-get install -y python3-venv python3-pip curl >/dev/null
 # 3. copy code
 mkdir -p "$DEST"
 cp -r "$SRC/server" "$SRC/web" "$DEST/"
+cp "$SRC/kiosk/launch-kiosk.sh" "$DEST/"
+chmod +x "$DEST/launch-kiosk.sh"
 python3 -m venv "$DEST/venv"
 "$DEST/venv/bin/pip" install --quiet --upgrade pip
 "$DEST/venv/bin/pip" install --quiet -r "$SRC/requirements.txt"
@@ -42,14 +44,29 @@ python3 -m venv "$DEST/venv"
 # 4. config dir
 mkdir -p /etc/pi-trafgen
 
-# 5. services
+# 5. server service (always) - starts on boot as root
 cp "$SRC/systemd/pi-trafgen.service" /etc/systemd/system/
-[[ $KIOSK -eq 1 ]] && cp "$SRC/systemd/pi-trafgen-kiosk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now pi-trafgen.service
+
+# 6. kiosk (optional) - the Pi's own panel.
+#    Raspberry Pi OS bookworm runs a Wayland desktop, so the browser is launched
+#    from the user's graphical session via XDG autostart, NOT a root systemd unit.
 if [[ $KIOSK -eq 1 ]]; then
-  systemctl enable pi-trafgen-kiosk.service
-  echo "kiosk enabled - starts with the graphical session"
+  apt-get install -y chromium-browser >/dev/null 2>&1 || apt-get install -y chromium >/dev/null 2>&1 || true
+  # install for the user who owns the desktop session (the one who ran sudo)
+  DESK_USER="${SUDO_USER:-$(logname 2>/dev/null || echo pi)}"
+  DESK_HOME=$(getent passwd "$DESK_USER" | cut -d: -f6)
+  install -d -o "$DESK_USER" -g "$DESK_USER" "$DESK_HOME/.config/autostart" "$DESK_HOME/Desktop"
+  install -m 644 -o "$DESK_USER" -g "$DESK_USER" \
+    "$SRC/kiosk/pi-trafgen-kiosk.desktop" "$DESK_HOME/.config/autostart/pi-trafgen-kiosk.desktop"
+  install -m 755 -o "$DESK_USER" -g "$DESK_USER" \
+    "$SRC/kiosk/pi-trafgen.desktop" "$DESK_HOME/Desktop/pi-trafgen.desktop"
+  # newer file managers want the launcher marked trusted before double-click works
+  sudo -u "$DESK_USER" gio set "$DESK_HOME/Desktop/pi-trafgen.desktop" \
+    metadata::trusted true 2>/dev/null || true
+  echo "kiosk enabled for user '$DESK_USER' - opens on next boot/login,"
+  echo "and there is a 'Traffic Generator' icon on the desktop to reopen it."
 fi
 
 IP=$(hostname -I | awk '{print $1}')

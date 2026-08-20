@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=pi-trafgen (kiosk)
+Comment=Open the traffic generator full-screen on boot
+Exec=/opt/pi-trafgen/launch-kiosk.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
+Terminal=false

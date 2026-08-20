@@ -91,6 +91,8 @@ class State:
         self.history: list[dict] = []
         self.started_at: float | None = None
         self.last: dict = {"pps": 0.0, "mbps": 0.0, "sent_packets": 0}
+        # pktgen's own counters, for the rate math that sysfs can't do under clone_skb
+        self._pk_prev: tuple[float, int, int] | None = None  # (t, pkts, bytes)
 
     def status(self) -> dict:
         iface = self.config.iface
@@ -192,6 +194,7 @@ def api_start() -> dict:
     state.meter = netstat.RateMeter(iface)
     state.history = []
     state.started_at = time.monotonic()
+    state._pk_prev = None
     runner.start()
     return state.status()
 
@@ -257,12 +260,32 @@ async def sampler() -> None:
         await asyncio.sleep(SAMPLE_PERIOD)
         if state.meter is None:
             continue
+
+        # sysfs meter is still read for tx_errors/dropped and as a fallback, but the
+        # headline pps/mbps come from pktgen's own counters when running - see
+        # Runner.wire_totals for why sysfs lies under clone_skb.
         try:
             sample = state.meter.sample()
         except OSError:
-            continue
-        if not runner.running:
+            sample = {"pps": 0.0, "mbps": 0.0, "sent_packets": 0, "tx_errors": 0, "tx_dropped": 0}
+
+        if runner.running:
+            now = time.monotonic()
+            # pktgen zeroes pkts-sofar on each start, so the raw total is this run's.
+            pkts, wbytes, errs = runner.wire_totals()
+            if state._pk_prev is not None:
+                pt, pp, pb = state._pk_prev
+                dt = now - pt
+                if dt > 0 and pkts >= pp:
+                    sample["pps"] = (pkts - pp) / dt
+                    sample["mbps"] = ((wbytes - pb) * 8 / dt) / 1e6
+            state._pk_prev = (now, pkts, wbytes)
+            sample["sent_packets"] = pkts
+            sample["tx_errors"] = errs
+        else:
             sample = {**sample, "pps": 0.0, "mbps": 0.0}
+            state._pk_prev = None
+
         sample["t"] = time.monotonic() - (state.started_at or time.monotonic())
         state.last = sample
         state.history.append(sample)

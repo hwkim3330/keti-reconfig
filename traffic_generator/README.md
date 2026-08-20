@@ -12,6 +12,14 @@ Both talk to one FastAPI server on the Pi (`:8080`). The generator is a separate
 IP node — it is **not** one of the BLE switch controllers. Keeping it on its own
 box means its control traffic (WiFi) never rides the link being measured (`eth0`).
 
+The Pi's own panel is **720×1280 portrait (9:16, HD)**; the web UI is laid out
+portrait-first and switches to a two-column layout on a wide screen. With
+`--kiosk` the UI opens full-screen **on boot** and there's a **desktop icon** to
+reopen it. `eth0` needs **no IP address** — pktgen builds raw L2 frames and never
+touches the IP stack or ARP, so it transmits on an unconfigured interface. That is
+exactly what you want for CBS/TAS: tag with VLAN + PCP and the switch classifies
+by PCP; the `dst_ip` field is just bytes in the payload.
+
 ```
  tablet  ──WiFi──┐
                  ├──► FastAPI :8080 ──► /proc/net/pktgen ──► eth0 ──► LAN9662/9692
@@ -47,11 +55,17 @@ it as such rather than pretending.
 git clone https://github.com/hwkim3330/keti-reconfig.git
 cd keti-reconfig/traffic_generator
 sudo ./install.sh            # server only (tablet drives it over WiFi)
-sudo ./install.sh --kiosk    # also launch the 7" LCD kiosk browser
+sudo ./install.sh --kiosk    # also open the UI full-screen on this Pi's panel
 ```
 
 The server lands in `/opt/pi-trafgen`, config in `/etc/pi-trafgen/config.json`,
-and runs as a systemd unit. UI at `http://<pi>:8080/`.
+and runs as a systemd unit (root, starts on boot). UI at `http://<pi>:8080/`.
+
+`--kiosk` installs an XDG-autostart entry (`~/.config/autostart/`) that opens
+Chromium full-screen at boot, plus a **Traffic Generator** icon on the desktop.
+On bookworm the desktop is Wayland (labwc/wayfire); the launcher uses
+`--ozone-platform-hint=auto` so it works under Wayland or X11, run from the user
+session rather than a root systemd unit.
 
 Point the tablet at the Pi with the address button in the top bar of the Traffic
 screen (default `172.31.51.228:8080`, the Pi as it appears on the KETI WiFi —
@@ -79,8 +93,9 @@ traffic_generator/
     netstat.py    # sysfs TX-counter rate meter (adds back FCS+preamble+IFG)
     presets.py    # the canned stream sets above
     main.py       # FastAPI: REST + /ws live push
-  web/            # dark kiosk UI (canvas chart, no external libs)
-  systemd/        # pi-trafgen.service + optional kiosk unit
+  web/            # dark UI, portrait-first (canvas chart, no external libs)
+  kiosk/          # launch-kiosk.sh + XDG-autostart & desktop .desktop files
+  systemd/        # pi-trafgen.service (server, root, on boot)
   install.sh
   requirements.txt
 ```

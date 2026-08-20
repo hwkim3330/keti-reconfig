@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Traffic Generator
+Comment=pi-trafgen control panel
+Exec=/opt/pi-trafgen/launch-kiosk.sh
+Icon=network-transmit-receive
+Terminal=false
+Categories=Network;
