@@ -68,7 +68,14 @@
           <span class="video-note" id="video-note"></span>
         </div>
         <video id="video" muted loop autoplay playsinline></video>
-        <div class="video-hint">Protected flow. Under load: stutters with TSN off, smooth with TSN on.</div>
+        <div class="vstats">
+          <span class="vstat"><b id="v-state">—</b><small>state</small></span>
+          <span class="vstat"><b id="v-drop">0</b><small>dropped f/s</small></span>
+          <span class="vstat"><b id="v-stall">0</b><small>stalls</small></span>
+          <span class="vstat"><b id="v-fps">0</b><small>fps</small></span>
+        </div>
+        <canvas id="vchart"></canvas>
+        <div class="video-hint">Video health — dropped frames spike when the flow is starved (TSN off); flat when protected (TSN on).</div>
       </section>
     </section>
 

@@ -155,6 +155,11 @@ body {
 .video-card video { width: 100%; flex: 1 1 auto; min-height: 0; border-radius: 0.6rem; background: #000; object-fit: contain; }
 .video-note { font-size: 0.7rem; color: var(--ink-3); font-weight: 500; letter-spacing: 0; }
 .video-hint { font-size: 0.8rem; color: var(--ink-2); line-height: 1.4; flex: 0 0 auto; }
+.vstats { display: flex; gap: 0.5rem; flex: 0 0 auto; }
+.vstat { flex: 1 1 0; background: var(--inset); border-radius: 0.6rem; padding: 0.5rem; text-align: center; display: flex; flex-direction: column; gap: 0.15rem; }
+.vstat b { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.vstat small { font-size: 0.62rem; color: var(--ink-3); letter-spacing: 0.03em; }
+#vchart { width: 100%; height: 4.5rem; flex: 0 0 auto; background: var(--inset); border-radius: 0.6rem; }
 
 /* ---- chart (fills the Monitor tab under the gauges) ---- */
 .chart-card { flex: 1 1 auto; min-height: 200px; display: flex; flex-direction: column; gap: 0.4rem; }

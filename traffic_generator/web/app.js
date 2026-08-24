@@ -417,7 +417,61 @@ async function loadVideo() {
     $("video-note").textContent = m.videos[0];
     $("video-card").hidden = false;
     v.play().catch(() => {});
+    startVideoMonitor(v);
   } catch (e) { /* no media - hide the card */ }
+}
+
+// Video health: dropped frames / stalls over time. When the flow is starved
+// (TSN off under load) playback stutters -> dropped frames spike; TSN on -> flat.
+const vhist = [];
+let vStalls = 0;
+function startVideoMonitor(v) {
+  v.addEventListener("waiting", () => { vStalls++; });
+  v.addEventListener("stalled", () => { vStalls++; });
+  let prevDrop = 0, prevTotal = 0, prevT = 0;
+  setInterval(() => {
+    const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+    const now = performance.now() / 1000;
+    let dps = 0, fps = 0;
+    if (q && prevT) {
+      const dt = now - prevT || 0.5;
+      dps = Math.max(0, (q.droppedVideoFrames - prevDrop) / dt);
+      fps = Math.max(0, (q.totalVideoFrames - prevTotal) / dt);
+      prevDrop = q.droppedVideoFrames; prevTotal = q.totalVideoFrames;
+    } else if (q) { prevDrop = q.droppedVideoFrames; prevTotal = q.totalVideoFrames; }
+    prevT = now;
+    vhist.push(dps); if (vhist.length > 120) vhist.shift();
+    const stalled = v.readyState < 3 && !v.paused;
+    $("v-state").textContent = stalled ? "STALL" : "PLAYING";
+    $("v-state").style.color = stalled ? "var(--bad)" : "var(--ok)";
+    $("v-drop").textContent = fmt(dps, 0);
+    $("v-drop").style.color = dps > 1 ? "var(--bad)" : "var(--ink)";
+    $("v-stall").textContent = vStalls;
+    $("v-fps").textContent = fmt(fps, 0);
+    drawVchart();
+  }, 500);
+}
+function drawVchart() {
+  const cv = $("vchart"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, W, H);
+  const max = Math.max(5, ...vhist) * 1.15;
+  x.strokeStyle = C.grid; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(0, H - 1); x.lineTo(W, H - 1); x.stroke();
+  if (vhist.length > 1) {
+    x.beginPath();
+    vhist.forEach((val, i) => {
+      const px = W * i / (vhist.length - 1), py = H - (H - 4) * Math.min(val / max, 1) - 2;
+      i ? x.lineTo(px, py) : x.moveTo(px, py);
+    });
+    const bad = vhist[vhist.length - 1] > 1;
+    x.strokeStyle = bad ? "#ff453a" : "#34c759"; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
+    x.lineTo(W, H); x.lineTo(0, H); x.closePath();
+    x.fillStyle = bad ? "rgba(255,69,58,0.12)" : "rgba(52,199,89,0.12)"; x.fill();
+  }
 }
 
 boot();
