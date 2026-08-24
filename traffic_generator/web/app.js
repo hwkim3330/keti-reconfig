@@ -460,6 +460,9 @@ async function setVideoSource(mode) {
       { enableWorker: true, liveBufferLatencyChasing: true,
         liveBufferLatencyMaxLatency: 1.8, liveBufferLatencyMinRemain: 0.3 });
     mpegtsPlayer.attachMediaElement(v);
+    // Self-heal: a live stream that hiccups (sender reboot, flood) leaves mpegts.js
+    // stalled with the socket still open. Rebuild on error rather than freeze.
+    mpegtsPlayer.on(mpegts.Events.ERROR, () => { scheduleLiveRecover(); });
     mpegtsPlayer.load();
     v.play().catch(() => {});
     pollVideoState();
@@ -471,6 +474,16 @@ async function setVideoSource(mode) {
     $("video-note").textContent = localVideos[0] + " (local)";
     v.play().catch(() => {});
   }
+}
+
+// Rebuild the live player, at most once every few seconds, when it stalls or errors.
+let liveRecoverAt = 0;
+function scheduleLiveRecover() {
+  if (videoSrcMode !== "live") return;
+  const now = Date.now();
+  if (now - liveRecoverAt < 4000) return;   // debounce a burst of errors
+  liveRecoverAt = now;
+  setTimeout(() => { if (videoSrcMode === "live") setVideoSource("live"); }, 300);
 }
 
 // Received-stream rate straight from the relay: this is the "receive graph". It
@@ -509,6 +522,7 @@ async function loadVideo() {
 // (TSN off under load) playback stutters -> dropped frames spike; TSN on -> flat.
 const vhist = [];
 let vStalls = 0;
+let liveStallN = 0;
 function startVideoMonitor(v) {
   v.addEventListener("waiting", () => { vStalls++; });
   v.addEventListener("stalled", () => { vStalls++; });
@@ -525,6 +539,11 @@ function startVideoMonitor(v) {
     } else if (q) { prevDrop = q.droppedVideoFrames; prevTotal = q.totalVideoFrames; }
     prevT = now;
     vhist.push(dps); if (vhist.length > 120) vhist.shift();
+    // stall watchdog: live stream connected but no frames decoding -> rebuild
+    if (videoSrcMode === "live") {
+      if (q && fps === 0 && prevT) liveStallN++; else liveStallN = 0;
+      if (liveStallN >= 6) { liveStallN = 0; scheduleLiveRecover(); }
+    }
     $("v-drop").textContent = fmt(dps, 0);
     $("v-drop").style.color = dps > 1 ? "var(--bad)" : "var(--ink)";
     $("v-stall").textContent = vStalls;
