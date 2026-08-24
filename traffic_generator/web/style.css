@@ -172,6 +172,9 @@ body {
   margin-top: 0.2rem; flex: 0 0 auto; }
 /* role-locked kiosk: no tab bar, so reclaim its space */
 .kiosk-locked .tabs { padding-bottom: 0.6rem; }
+/* on the sender panel the flood is the point; TSN belongs to the switch, and its
+   CBS preset would overwrite the line-rate config - so hide it in the kiosk. */
+.kiosk-locked .tesla.tsn { display: none; }
 
 /* ---- chart (fills the Monitor tab under the gauges) ---- */
 .chart-card { flex: 1 1 auto; min-height: 200px; display: flex; flex-direction: column; gap: 0.4rem; }
