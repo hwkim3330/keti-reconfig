@@ -12,7 +12,7 @@
   <header class="topbar">
     <img class="logo logo-light" src="/keti.png" alt="KETI">
     <img class="logo logo-dark" src="/keti-white.png" alt="KETI">
-    <div class="title">Traffic Gen</div>
+    <div class="title" id="title">Traffic Gen</div>
     <div class="topstat">
       <span class="pill" id="iface-pill">eth0</span>
       <span class="pill" id="link-pill">—</span>
@@ -73,13 +73,16 @@
         <div class="video-note" id="video-note"></div>
         <video id="video" muted loop autoplay playsinline></video>
         <div class="vstats">
-          <span class="vstat"><b id="v-state">—</b><small>state</small></span>
+          <span class="vstat"><b id="rx-mbps">0.00</b><small>rx Mbps</small></span>
           <span class="vstat"><b id="v-drop">0</b><small>dropped f/s</small></span>
           <span class="vstat"><b id="v-stall">0</b><small>stalls</small></span>
           <span class="vstat"><b id="v-fps">0</b><small>fps</small></span>
         </div>
+        <div class="glabel">RECEIVED STREAM RATE</div>
+        <canvas id="rxchart"></canvas>
+        <div class="glabel">DECODE HEALTH — dropped frames / s</div>
         <canvas id="vchart"></canvas>
-        <div class="video-hint">Video health — dropped frames spike when the flow is starved (TSN off); flat when protected (TSN on).</div>
+        <div class="video-hint">Rate dips and dropped frames spike when a flood collides with the video (no TSN); flat when the class is protected.</div>
       </section>
     </section>
 

@@ -7,7 +7,11 @@
 # is laid out portrait-first, so no rotation is needed.
 set -u
 
+# Role of this panel, if any: /etc/pi-trafgen/view = "tx" (sender: transmit graph)
+# or "video" (receiver: video + receive graph). Empty -> full tabbed UI.
+VIEW="$(cat /etc/pi-trafgen/view 2>/dev/null | tr -dc 'a-z')"
 URL="http://localhost:8080/"
+[ -n "$VIEW" ] && URL="http://localhost:8080/?view=$VIEW"
 
 # The systemd service may still be coming up when the desktop autostarts us.
 for _ in $(seq 1 60); do

@@ -404,6 +404,19 @@ async function boot() {
   loadVideo();
   connectWs();
   requestAnimationFrame(loop);
+
+  // Role view: one identical UI, kiosks differ only by ?view=.
+  //   ?view=tx    -> sender panel: the transmit graph (Monitor), tab bar hidden
+  //   ?view=video -> receiver panel: the video + receive graph, tab bar hidden
+  const view = new URLSearchParams(location.search).get("view");
+  if (view === "tx" || view === "video") {
+    const tab = view === "tx" ? "monitor" : "video";
+    const btn = document.querySelector(`.tabbtn[data-tab="${tab}"]`);
+    if (btn) btn.onclick();               // select and lay out that tab
+    document.querySelector(".tabbar").hidden = true;
+    document.documentElement.classList.add("kiosk-locked");
+    $("title").textContent = view === "tx" ? "Transmit" : "Receive";
+  }
 }
 
 // The "protected video flow". Two sources:
@@ -460,15 +473,26 @@ async function setVideoSource(mode) {
   }
 }
 
+// Received-stream rate straight from the relay: this is the "receive graph". It
+// sits flat at the clip's rate, and dips/collapses when a flood collides with it
+// on the shared link (no TSN) - the mirror image of the sender's transmit graph.
+const rxhist = [];
 async function pollVideoState() {
   if (videoSrcMode !== "live") return;
   try {
     const s = await api("/api/video/state");
     const note = $("video-note");
-    if (s.receiving) note.textContent = `live · udp:${s.port} · ${fmt(s.kbps / 1000, 1)} Mbps`;
+    if (s.receiving) note.textContent = `live · udp:${s.port} · ${fmt(s.kbps / 1000, 2)} Mbps · from ${(s.peers || []).slice(-1)[0] || "?"}`;
     else note.textContent = `waiting for stream on udp:${s.port || "5000"} …`;
+    const mbps = (s.receiving ? s.kbps : 0) / 1000;
+    rxhist.push(mbps); if (rxhist.length > 120) rxhist.shift();
+    if ($("rx-mbps")) {
+      $("rx-mbps").textContent = fmt(mbps, 2);
+      $("rx-mbps").style.color = s.receiving ? "var(--ok)" : "var(--bad)";
+    }
+    drawRxchart();
   } catch (e) {}
-  if (videoSrcMode === "live") setTimeout(pollVideoState, 1000);
+  if (videoSrcMode === "live") setTimeout(pollVideoState, 500);
 }
 
 async function loadVideo() {
@@ -501,9 +525,6 @@ function startVideoMonitor(v) {
     } else if (q) { prevDrop = q.droppedVideoFrames; prevTotal = q.totalVideoFrames; }
     prevT = now;
     vhist.push(dps); if (vhist.length > 120) vhist.shift();
-    const stalled = v.readyState < 3 && !v.paused;
-    $("v-state").textContent = stalled ? "STALL" : "PLAYING";
-    $("v-state").style.color = stalled ? "var(--bad)" : "var(--ok)";
     $("v-drop").textContent = fmt(dps, 0);
     $("v-drop").style.color = dps > 1 ? "var(--bad)" : "var(--ink)";
     $("v-stall").textContent = vStalls;
@@ -531,6 +552,33 @@ function drawVchart() {
     x.strokeStyle = bad ? "#ff453a" : "#34c759"; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
     x.lineTo(W, H); x.lineTo(0, H); x.closePath();
     x.fillStyle = bad ? "rgba(255,69,58,0.12)" : "rgba(52,199,89,0.12)"; x.fill();
+  }
+}
+
+// Received rate over time. Reference = the healthy plateau (recent peak); the line
+// goes red when the current rate falls well below it, i.e. a flood is winning.
+function drawRxchart() {
+  const cv = $("rxchart"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, W, H);
+  const ref = Math.max(0.2, ...rxhist);
+  const max = ref * 1.2;
+  x.strokeStyle = C.grid; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(0, H - 1); x.lineTo(W, H - 1); x.stroke();
+  if (rxhist.length > 1) {
+    x.beginPath();
+    rxhist.forEach((val, i) => {
+      const px = W * i / (rxhist.length - 1), py = H - (H - 4) * Math.min(val / max, 1) - 2;
+      i ? x.lineTo(px, py) : x.moveTo(px, py);
+    });
+    const cur = rxhist[rxhist.length - 1];
+    const bad = cur < ref * 0.7;   // collapsed well below the healthy plateau
+    x.strokeStyle = bad ? "#ff453a" : "#34c759"; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
+    x.lineTo(W, H); x.lineTo(0, H); x.closePath();
+    x.fillStyle = bad ? "rgba(255,69,58,0.14)" : "rgba(52,199,89,0.14)"; x.fill();
   }
 }
 
