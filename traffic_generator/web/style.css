@@ -36,23 +36,25 @@
    keep whichever reads better in the room. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg:        #000000;   /* true black - crispest on the panel, best glare */
-  --card:      #1c1c1e;
-  --inset:     #2c2c2e;
-  --hair:      rgba(255,255,255,0.10);
-  --ink:       #ffffff;
-  --ink-2:     #aeaeb2;
-  --ink-3:     #8e8e93;
-  --accent:    #4aa3ff;   /* brighter blue for the dark surface */
-  --accent-2:  #ff8a4c;
-  --ok:        #32d74b;
-  --ok-d:      #28b23e;
-  --bad:       #ff453a;
-  --bad-d:     #d63a30;
-  --warn:      #ff9f0a;
-  --shadow:    0 1px 2px rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5);
-  --topbar:    rgba(28,28,30,0.8);
-  --grid-line: #2c2c2e;
+  /* Toned-down instrument palette: near-black field, desaturated accents, softer
+     ink. Matches the on-screen video; avoids the loud neon/glass look. */
+  --bg:        #0c0e12;
+  --card:      #16181d;
+  --inset:     #1e2127;
+  --hair:      rgba(255,255,255,0.07);
+  --ink:       #e7e9ec;
+  --ink-2:     #9aa0a8;
+  --ink-3:     #6b7178;
+  --accent:    #6f97b3;   /* calm steel blue - throughput */
+  --accent-2:  #c69256;   /* muted amber - packet rate */
+  --ok:        #5fa87f;   /* subdued green */
+  --ok-d:      #4c8f6a;
+  --bad:       #cf6a60;   /* subdued red */
+  --bad-d:     #b5544c;
+  --warn:      #c69256;
+  --shadow:    0 1px 2px rgba(0,0,0,0.35), 0 4px 14px rgba(0,0,0,0.4);
+  --topbar:    rgba(18,20,25,0.82);
+  --grid-line: #23262c;
   --logo-bg:   transparent;  /* logo has no truly-dark pixels, reads fine on black */
 }
 
@@ -209,12 +211,12 @@ body {
 .tesla:active { transform: scale(0.975); }
 .tesla.start {
   flex: 2 1 0;
-  background: linear-gradient(180deg, #3ad15f, var(--ok-d));
-  box-shadow: 0 6px 18px rgba(52,199,89,0.35), inset 0 0 0 0.5px rgba(0,0,0,0.06);
+  background: var(--ok);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.28), inset 0 0 0 0.5px rgba(0,0,0,0.12);
 }
 .tesla.stop {
-  background: linear-gradient(180deg, #ff5147, var(--bad-d));
-  box-shadow: 0 6px 18px rgba(255,59,48,0.30), inset 0 0 0 0.5px rgba(0,0,0,0.06);
+  background: var(--bad);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.28), inset 0 0 0 0.5px rgba(0,0,0,0.12);
 }
 .tesla.tsn {
   flex: 1.4 1 0;
@@ -222,8 +224,8 @@ body {
   box-shadow: 0 6px 18px rgba(0,0,0,0.25), inset 0 0 0 0.5px rgba(0,0,0,0.06);
 }
 .tesla.tsn.on {
-  background: linear-gradient(180deg, #4aa3ff, var(--accent));
-  box-shadow: 0 6px 22px rgba(22,104,179,0.45), inset 0 0 0 0.5px rgba(0,0,0,0.06);
+  background: var(--accent);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.28), inset 0 0 0 0.5px rgba(0,0,0,0.12);
 }
 .tesla[disabled] {
   background: var(--inset);

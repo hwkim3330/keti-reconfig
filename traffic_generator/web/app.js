@@ -590,9 +590,9 @@ function drawVchart() {
       i ? x.lineTo(px, py) : x.moveTo(px, py);
     });
     const bad = vhist[vhist.length - 1] > 1;
-    x.strokeStyle = bad ? "#ff453a" : "#34c759"; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
+    x.strokeStyle = bad ? "#cf6a60" : "#5fa87f"; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
     x.lineTo(W, H); x.lineTo(0, H); x.closePath();
-    x.fillStyle = bad ? "rgba(255,69,58,0.12)" : "rgba(52,199,89,0.12)"; x.fill();
+    x.fillStyle = bad ? "rgba(207,106,96,0.12)" : "rgba(95,168,127,0.12)"; x.fill();
   }
 }
 
