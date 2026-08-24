@@ -384,10 +384,18 @@ async function boot() {
   $("btn-theme").onclick = () =>
     applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
 
-  try {
-    state.system = await api("/api/system");
-    state.config = await api("/api/config");
-  } catch (e) { showMsg("server unreachable: " + e.message, true); return; }
+  // Retry: on a Pi the kiosk can load a beat before the server is ready (or during
+  // a restart). Giving up here left a dead page; keep trying instead.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      state.system = await api("/api/system");
+      state.config = await api("/api/config");
+      break;
+    } catch (e) {
+      showMsg(`connecting to server… (${attempt})`, true);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
 
   renderIfaces();
   renderPresets();
@@ -448,15 +456,17 @@ async function setVideoSource(mode) {
       $("video-note").textContent = "live playback unsupported here - use Local file";
       return setVideoSource("local");
     }
-    // Smoothness over minimum latency: chasing the live edge makes mpegts.js skip
-    // and speed up, which reads as stutter. Let it hold a ~1s stash and play at 1x.
+    // Keep only a small live buffer (~0.4-1.5s): enough to smooth jitter now that
+    // the clip is clean, but small enough that the video actually tracks the wire -
+    // pull the LAN and it stalls within a second, instead of coasting on a big
+    // buffer (which made it "keep playing" with the cable out).
     mpegtsPlayer = mpegts.createPlayer(
       { type: "mpegts", isLive: true, url: wsVideoURL() },
       { enableWorker: true,
-        liveBufferLatencyChasing: false,
-        liveBufferLatencyChasingOnPaused: false,
-        enableStashBuffer: true,
-        stashInitialSize: 384 * 1024,
+        enableStashBuffer: false,
+        liveBufferLatencyChasing: true,
+        liveBufferLatencyMaxLatency: 1.5,
+        liveBufferLatencyMinRemain: 0.4,
         autoCleanupSourceBuffer: true });
     mpegtsPlayer.attachMediaElement(v);
     // Self-heal: a live stream that hiccups (sender reboot, flood) leaves mpegts.js
