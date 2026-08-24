@@ -65,8 +65,12 @@
       <section class="card video-card" id="video-card">
         <div class="section-head">
           <span>PROTECTED VIDEO</span>
-          <span class="video-note" id="video-note"></span>
+          <div class="seg" id="video-src">
+            <button class="seg-btn active" data-src="live">Live stream</button>
+            <button class="seg-btn" data-src="local">Local file</button>
+          </div>
         </div>
+        <div class="video-note" id="video-note"></div>
         <video id="video" muted loop autoplay playsinline></video>
         <div class="vstats">
           <span class="vstat"><b id="v-state">—</b><small>state</small></span>
@@ -113,6 +117,7 @@
       <svg class="tabico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Config</button>
   </nav>
 </div>
+<script src="/mpegts.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

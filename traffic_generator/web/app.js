@@ -406,19 +406,79 @@ async function boot() {
   requestAnimationFrame(loop);
 }
 
-// The "protected video flow" - plays the sample clip served from the Pi. This is
-// the stream TSN is meant to protect; under a flood with TSN off it stutters.
+// The "protected video flow". Two sources:
+//  - Live: the MPEG-TS stream the *sender* Pi pushes over the network (through the
+//    9662). The server relays it on /ws/video and mpegts.js feeds it into <video>.
+//    This is the real transmission demo - with TSN off the picture stutters.
+//  - Local: the sample clip served from this Pi (fallback / when no sender yet).
+let mpegtsPlayer = null;
+let videoSrcMode = "live";
+let videoMonitorStarted = false;
+let localVideos = [];
+
+const wsVideoURL = () =>
+  (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/ws/video";
+
+function destroyLive() {
+  if (mpegtsPlayer) {
+    try { mpegtsPlayer.destroy(); } catch (e) {}
+    mpegtsPlayer = null;
+  }
+}
+
+async function setVideoSource(mode) {
+  const v = $("video");
+  $("video-card").hidden = false;
+  document.querySelectorAll("#video-src .seg-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.src === mode));
+  if (!videoMonitorStarted) { startVideoMonitor(v); videoMonitorStarted = true; }
+  vhist.length = 0;
+
+  if (mode === "live") {
+    videoSrcMode = "live";
+    destroyLive();
+    v.removeAttribute("src"); v.load();
+    if (!(window.mpegts && mpegts.isSupported())) {
+      $("video-note").textContent = "live playback unsupported here - use Local file";
+      return setVideoSource("local");
+    }
+    mpegtsPlayer = mpegts.createPlayer(
+      { type: "mpegts", isLive: true, url: wsVideoURL() },
+      { enableWorker: true, liveBufferLatencyChasing: true,
+        liveBufferLatencyMaxLatency: 1.8, liveBufferLatencyMinRemain: 0.3 });
+    mpegtsPlayer.attachMediaElement(v);
+    mpegtsPlayer.load();
+    v.play().catch(() => {});
+    pollVideoState();
+  } else {
+    videoSrcMode = "local";
+    destroyLive();
+    if (!localVideos.length) { $("video-note").textContent = "no local media"; return; }
+    v.src = "/media/" + encodeURIComponent(localVideos[0]);
+    $("video-note").textContent = localVideos[0] + " (local)";
+    v.play().catch(() => {});
+  }
+}
+
+async function pollVideoState() {
+  if (videoSrcMode !== "live") return;
+  try {
+    const s = await api("/api/video/state");
+    const note = $("video-note");
+    if (s.receiving) note.textContent = `live · udp:${s.port} · ${fmt(s.kbps / 1000, 1)} Mbps`;
+    else note.textContent = `waiting for stream on udp:${s.port || "5000"} …`;
+  } catch (e) {}
+  if (videoSrcMode === "live") setTimeout(pollVideoState, 1000);
+}
+
 async function loadVideo() {
   try {
     const m = await api("/api/media");
-    if (!m.videos || !m.videos.length) return;
-    const v = $("video");
-    v.src = "/media/" + encodeURIComponent(m.videos[0]);
-    $("video-note").textContent = m.videos[0];
-    $("video-card").hidden = false;
-    v.play().catch(() => {});
-    startVideoMonitor(v);
-  } catch (e) { /* no media - hide the card */ }
+    localVideos = m.videos || [];
+  } catch (e) { localVideos = []; }
+  const btns = document.querySelectorAll("#video-src .seg-btn");
+  btns.forEach((b) => { b.onclick = () => setVideoSource(b.dataset.src); });
+  setVideoSource("live");
 }
 
 // Video health: dropped frames / stalls over time. When the flow is starved

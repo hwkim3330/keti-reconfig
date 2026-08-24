@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import netstat, pktgen, presets
+from . import netstat, pktgen, presets, video
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -48,6 +48,8 @@ HISTORY_LEN = 240  # 2 minutes at 0.5 s
 
 app = FastAPI(title="pi-trafgen")
 runner = pktgen.Runner()
+relay = video.VideoRelay()
+VIDEO_PORT = int(os.environ.get("TRAFGEN_VIDEO_PORT", "5000"))
 
 
 # --------------------------------------------------------------------------
@@ -359,6 +361,46 @@ def api_media() -> dict:
         if f.is_file() and f.suffix.lower() in VIDEO_EXT
     )
     return {"dir": str(MEDIA_DIR), "videos": vids}
+
+
+# --------------------------------------------------------------------------
+# live video receiver (network stream from the sender Pi -> browser via MSE)
+# --------------------------------------------------------------------------
+class VideoRxModel(BaseModel):
+    action: str = "start"  # start | stop
+    port: int | None = None
+
+
+@app.get("/api/video/state")
+def api_video_state() -> dict:
+    return relay.state()
+
+
+@app.post("/api/video/receiver")
+async def api_video_receiver(m: VideoRxModel) -> dict:
+    if m.action == "stop":
+        await relay.stop()
+    else:
+        await relay.start(m.port or VIDEO_PORT)
+    return relay.state()
+
+
+@app.websocket("/ws/video")
+async def ws_video(sock: WebSocket) -> None:
+    """Raw MPEG-TS byte stream for mpegts.js (isLive). Starts the receiver on
+    demand so the kiosk 'Live' toggle just works."""
+    await sock.accept()
+    if not relay.running:
+        await relay.start(VIDEO_PORT)
+    q = relay.subscribe()
+    try:
+        while True:
+            data = await q.get()
+            await sock.send_bytes(data)
+    except (WebSocketDisconnect, RuntimeError):
+        return
+    finally:
+        relay.unsubscribe(q)
 
 
 # --------------------------------------------------------------------------
