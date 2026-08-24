@@ -455,10 +455,16 @@ async function setVideoSource(mode) {
       $("video-note").textContent = "live playback unsupported here - use Local file";
       return setVideoSource("local");
     }
+    // Smoothness over minimum latency: chasing the live edge makes mpegts.js skip
+    // and speed up, which reads as stutter. Let it hold a ~1s stash and play at 1x.
     mpegtsPlayer = mpegts.createPlayer(
       { type: "mpegts", isLive: true, url: wsVideoURL() },
-      { enableWorker: true, liveBufferLatencyChasing: true,
-        liveBufferLatencyMaxLatency: 1.8, liveBufferLatencyMinRemain: 0.3 });
+      { enableWorker: true,
+        liveBufferLatencyChasing: false,
+        liveBufferLatencyChasingOnPaused: false,
+        enableStashBuffer: true,
+        stashInitialSize: 384 * 1024,
+        autoCleanupSourceBuffer: true });
     mpegtsPlayer.attachMediaElement(v);
     // Self-heal: a live stream that hiccups (sender reboot, flood) leaves mpegts.js
     // stalled with the socket still open. Rebuild on error rather than freeze.
