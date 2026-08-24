@@ -107,7 +107,31 @@ class VideoRelay:
             "port": self.port,
             "receiving": alive,
             "kbps": round(self.kbps, 1),
+            "link_rx_mbps": round(link_rx_mbps(), 1),
             "pkts": self.pkts,
             "clients": len(self._subs),
             "peers": sorted(self.peers),
         }
+
+
+# Total inbound rate on the receiver's link (video + any flood), so the kiosk can
+# show "the whole pipe is full but the video's slice collapsed". Self-contained
+# rate meter, read from sysfs. Interface set once by main at startup.
+_rx = {"iface": "eth0", "t": 0.0, "bytes": 0, "mbps": 0.0}
+
+
+def set_rx_iface(iface: str) -> None:
+    _rx["iface"] = iface
+
+
+def link_rx_mbps() -> float:
+    try:
+        b = int(open(f"/sys/class/net/{_rx['iface']}/statistics/rx_bytes").read())
+    except (OSError, ValueError):
+        return _rx["mbps"]
+    now = time.monotonic()
+    dt = now - _rx["t"]
+    if _rx["t"] and dt > 0 and b >= _rx["bytes"]:
+        _rx["mbps"] = (b - _rx["bytes"]) * 8 / dt / 1e6
+    _rx["t"], _rx["bytes"] = now, b
+    return _rx["mbps"]

@@ -445,6 +445,7 @@ async def sampler() -> None:
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    video.set_rx_iface(state.config.iface)   # link-RX meter reads this NIC
     app.state.sampler = asyncio.create_task(sampler())
 
 

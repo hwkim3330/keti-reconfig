@@ -360,13 +360,22 @@ async function boot() {
     try { await api("/api/stop", { method: "POST" }); showMsg("stopped"); }
     catch (e) { showMsg(e.message, true); }
   };
+  let tsnOn = false;
   $("btn-tsn").onclick = async () => {
-    // one-tap TSN test: load the CBS profile (9662 PCP->TC mapping) and start
+    // one-tap TSN test, now a toggle: ON loads the CBS profile and starts; OFF stops.
+    const btn = $("btn-tsn"), lbl = btn.querySelector(".lbl");
     try {
-      state.config = await api("/api/preset/cbs_tc2_tc6", { method: "POST" });
-      renderStreams(); refreshPlan();
-      await api("/api/start", { method: "POST" });
-      showMsg("TSN ON - CBS TC2 (1.5M) + TC6 (3.5M)");
+      if (!tsnOn) {
+        state.config = await api("/api/preset/cbs_tc2_tc6", { method: "POST" });
+        renderStreams(); refreshPlan();
+        await api("/api/start", { method: "POST" });
+        tsnOn = true; lbl.textContent = "TSN ON"; btn.classList.add("on");
+        showMsg("TSN ON - CBS TC2 (1.5M) + TC6 (3.5M)");
+      } else {
+        await api("/api/stop", { method: "POST" });
+        tsnOn = false; lbl.textContent = "TSN OFF"; btn.classList.remove("on");
+        showMsg("TSN OFF");
+      }
     } catch (e) { showMsg(e.message, true); }
   };
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
@@ -495,19 +504,26 @@ function scheduleLiveRecover() {
 // Received-stream rate straight from the relay: this is the "receive graph". It
 // sits flat at the clip's rate, and dips/collapses when a flood collides with it
 // on the shared link (no TSN) - the mirror image of the sender's transmit graph.
-const rxhist = [];
+const rxhist = [];    // video Mbps
+const linkhist = [];  // total link-in Mbps (video + flood)
 async function pollVideoState() {
   if (videoSrcMode !== "live") return;
   try {
     const s = await api("/api/video/state");
     const note = $("video-note");
-    if (s.receiving) note.textContent = `live · udp:${s.port} · ${fmt(s.kbps / 1000, 2)} Mbps · from ${(s.peers || []).slice(-1)[0] || "?"}`;
+    if (s.receiving) note.textContent = `udp:${s.port} · ${fmt(s.kbps / 1000, 2)} Mbps · from ${(s.peers || []).slice(-1)[0] || "?"}`;
     else note.textContent = `waiting for stream on udp:${s.port || "5000"} …`;
     const mbps = (s.receiving ? s.kbps : 0) / 1000;
+    const link = s.link_rx_mbps || 0;
     rxhist.push(mbps); if (rxhist.length > 120) rxhist.shift();
+    linkhist.push(link); if (linkhist.length > 120) linkhist.shift();
     if ($("rx-mbps")) {
       $("rx-mbps").textContent = fmt(mbps, 2);
       $("rx-mbps").style.color = s.receiving ? "var(--ok)" : "var(--bad)";
+    }
+    if ($("link-mbps")) {
+      $("link-mbps").textContent = link >= 100 ? fmt(link, 0) : fmt(link, 1);
+      $("link-mbps").style.color = link > 50 ? "var(--warn, #d98c4a)" : "var(--ink)";
     }
     drawRxchart();
   } catch (e) {}
@@ -589,22 +605,24 @@ function drawRxchart() {
   cv.width = W * dpr; cv.height = H * dpr;
   const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
   x.clearRect(0, 0, W, H);
-  const ref = Math.max(0.2, ...rxhist);
-  const max = ref * 1.2;
+  // shared scale: link-in dominates during a flood, so the video line sinks toward
+  // the floor - which is exactly the story (pipe full, video's share crushed).
+  const max = Math.max(0.3, ...linkhist, ...rxhist) * 1.15;
   x.strokeStyle = C.grid; x.lineWidth = 1;
   x.beginPath(); x.moveTo(0, H - 1); x.lineTo(W, H - 1); x.stroke();
-  if (rxhist.length > 1) {
+  const plot = (hist, stroke, fill) => {
+    if (hist.length < 2) return;
     x.beginPath();
-    rxhist.forEach((val, i) => {
-      const px = W * i / (rxhist.length - 1), py = H - (H - 4) * Math.min(val / max, 1) - 2;
+    hist.forEach((v, i) => {
+      const px = W * i / (hist.length - 1), py = H - (H - 4) * Math.min(v / max, 1) - 2;
       i ? x.lineTo(px, py) : x.moveTo(px, py);
     });
-    const cur = rxhist[rxhist.length - 1];
-    const bad = cur < ref * 0.7;   // collapsed well below the healthy plateau
-    x.strokeStyle = bad ? "#ff453a" : "#34c759"; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
-    x.lineTo(W, H); x.lineTo(0, H); x.closePath();
-    x.fillStyle = bad ? "rgba(255,69,58,0.14)" : "rgba(52,199,89,0.14)"; x.fill();
-  }
+    x.strokeStyle = stroke; x.lineWidth = 2; x.lineJoin = "round"; x.stroke();
+    if (fill) { x.lineTo(W, H); x.lineTo(0, H); x.closePath(); x.fillStyle = fill; x.fill(); }
+  };
+  plot(linkhist, "#8a9199", "rgba(138,145,153,0.14)");   // total link in (muted)
+  const vbad = rxhist.length && rxhist[rxhist.length - 1] < Math.max(0.3, ...rxhist) * 0.7;
+  plot(rxhist, vbad ? "#d1544b" : "#e4e6ea", null);      // video (bright), red if crushed
 }
 
 boot();
