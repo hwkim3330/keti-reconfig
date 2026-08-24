@@ -23,6 +23,11 @@ done
 pkill -f "pi-trafgen-kiosk-profile" 2>/dev/null
 sleep 1
 
+# Drop any cached HTML/JS/CSS so a UI update is always picked up on boot.
+rm -rf "$HOME/.config/pi-trafgen-kiosk-profile/Default/Cache" \
+       "$HOME/.config/pi-trafgen-kiosk-profile/Default/Code Cache" \
+       "$HOME/.config/pi-trafgen-kiosk-profile/GrShaderCache" 2>/dev/null
+
 BIN=chromium-browser
 command -v "$BIN" >/dev/null 2>&1 || BIN=chromium
 
@@ -37,6 +42,7 @@ exec "$BIN" \
   --user-data-dir="$HOME/.config/pi-trafgen-kiosk-profile" \
   "${PLATFORM[@]}" \
   --password-store=basic \
+  --disk-cache-size=1 \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \

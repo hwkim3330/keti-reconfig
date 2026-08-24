@@ -47,6 +47,17 @@ SAMPLE_PERIOD = 0.5
 HISTORY_LEN = 240  # 2 minutes at 0.5 s
 
 app = FastAPI(title="pi-trafgen")
+
+
+@app.middleware("http")
+async def no_cache(request, call_next):
+    # The kiosk runs a long-lived Chromium profile; without this it serves stale
+    # HTML/JS/CSS after an update. It's a LAN panel, so never cache anything.
+    resp = await call_next(request)
+    resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
+
+
 runner = pktgen.Runner()
 relay = video.VideoRelay()
 VIDEO_PORT = int(os.environ.get("TRAFGEN_VIDEO_PORT", "5000"))

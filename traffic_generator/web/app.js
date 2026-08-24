@@ -361,24 +361,7 @@ async function boot() {
     try { await api("/api/stop", { method: "POST" }); showMsg("stopped"); }
     catch (e) { showMsg(e.message, true); }
   };
-  let tsnOn = false;
-  $("btn-tsn").onclick = async () => {
-    // one-tap TSN test, now a toggle: ON loads the CBS profile and starts; OFF stops.
-    const btn = $("btn-tsn"), lbl = btn.querySelector(".lbl");
-    try {
-      if (!tsnOn) {
-        state.config = await api("/api/preset/cbs_tc2_tc6", { method: "POST" });
-        renderStreams(); refreshPlan();
-        await api("/api/start", { method: "POST" });
-        tsnOn = true; lbl.textContent = "TSN ON"; btn.classList.add("on");
-        showMsg("TSN ON - CBS TC2 (1.5M) + TC6 (3.5M)");
-      } else {
-        await api("/api/stop", { method: "POST" });
-        tsnOn = false; lbl.textContent = "TSN OFF"; btn.classList.remove("on");
-        showMsg("TSN OFF");
-      }
-    } catch (e) { showMsg(e.message, true); }
-  };
+  // (TSN is the switch's job on the 9692, not the sender's pktgen - no button here.)
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
   $("btn-save").onclick = saveCurrentPreset;
 
