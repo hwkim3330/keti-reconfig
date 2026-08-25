@@ -36,20 +36,23 @@ PRESETS: dict[str, dict] = {
     },
     "line_rate_1500": {
         "label": "1G line rate (1500B)",
-        "note": "81.3 kpps saturates GbE with big frames - a Pi 4 does this easily.",
+        "note": "Full 81.3 kpps = a steady 1000 Mbps on the wire. Two streams on "
+        "two cores because one Pi-4 core tops out ~79 kpps (969 Mbps); the pair "
+        "saturates the NIC and the link caps the surplus at exact line rate.",
         "streams": [
             {
-                "name": "bulk",
+                "name": f"bulk{i}",
                 "frame_size": 1518,
                 "vlan_id": None,
                 "pcp": 0,
                 "rate_mode": "max",
                 "rate_value": 0,
-                "cpu": 0,
-                "queue": 0,
+                "cpu": i,
+                "queue": i,
                 "clone_skb": 100000,
                 "burst": 8,
             }
+            for i in range(2)
         ],
     },
     "line_rate_512": {
