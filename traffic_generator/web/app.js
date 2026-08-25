@@ -104,9 +104,9 @@ const chart = (() => {
 // ---------------------------------------------------------------- gauges
 function paintGauges(s) {
   const mbps = s.mbps || 0, pps = s.pps || 0;
-  // show Gbps once past a gigabit so the line-rate moment reads right
-  if (mbps >= 1000) { $("mbps").textContent = fmt(mbps / 1000, 2); $("mbps-unit").textContent = "Gbps"; }
-  else { $("mbps").textContent = fmt(mbps, 1); $("mbps-unit").textContent = "Mbps"; }
+  // always Mbps - line rate reads as "1000", not "1.00 Gbps"
+  $("mbps").textContent = fmt(mbps, mbps >= 100 ? 0 : 1);
+  $("mbps-unit").textContent = "Mbps";
   $("pps").textContent = fmt(pps);
   $("kpps").textContent = fmt(pps / 1000, 1);
   const pct = Math.min(100, (mbps / 1000) * 100);
