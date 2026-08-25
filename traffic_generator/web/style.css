@@ -94,7 +94,10 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .theme-btn:active { opacity: 0.6; }
-.title { font-size: 1rem; font-weight: 700; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand { display: flex; flex-direction: column; gap: 0.05rem; flex: 1 1 auto; min-width: 0; }
+.title { font-size: 1.05rem; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subtitle { font-size: 0.62rem; font-weight: 600; color: var(--ink-3); letter-spacing: 0.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topstat { display: flex; gap: 0.4rem; margin-left: auto; align-items: center; flex-wrap: nowrap; justify-content: flex-end; flex: 0 0 auto; }
 .pill {
   font-size: 0.76rem; font-weight: 600; padding: 0.28rem 0.65rem; border-radius: 999px;

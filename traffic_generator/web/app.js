@@ -416,7 +416,13 @@ async function boot() {
     if (btn) btn.onclick();               // select and lay out that tab
     document.querySelector(".tabbar").hidden = true;
     document.documentElement.classList.add("kiosk-locked");
-    $("title").textContent = view === "tx" ? "Transmit" : "Receive";
+    if (view === "tx") {
+      $("title").textContent = "Traffic Generator";
+      $("subtitle").textContent = "Background flow · this node floods the link";
+    } else {
+      $("title").textContent = "Protected Video";
+      $("subtitle").textContent = "The stream TSN keeps alive through the flood";
+    }
   }
 }
 
