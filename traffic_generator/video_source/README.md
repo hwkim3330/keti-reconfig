@@ -56,3 +56,21 @@ re-streams on its own — no PC at runtime.
 
 `pts_replay.py` (in this dir) is the alternative seamless-loop replayer for short
 clips.
+
+## Two source modes — file or live webcam
+
+Two mutually-exclusive services (both stream to Pi2:5000, `Conflicts=` so starting
+one stops the other):
+
+| mode | service | source |
+|---|---|---|
+| **file** (default, autostarts) | `video-stream.service` | Big Buck Bunny loop (`/home/keti/bbb.ts`) |
+| **live** | `video-cam.service` | Logitech StreamCam, MJPEG 720p30 |
+
+Switch with `video-mode.sh file|cam`. The webcam path uses the **Pi4 hardware H.264
+encoder** (`h264_v4l2m2m`) so encoding is offloaded — MJPEG decode is ~68% of one
+core, the encode itself is free. Live mode has no loop at all.
+
+Note on resolution: the kiosk panel is 720x1280 (7"), so 720p already exceeds it —
+1080p would only be downscaled. For a *bigger flow* (TSN demo impact) raise the
+bitrate, not the resolution.

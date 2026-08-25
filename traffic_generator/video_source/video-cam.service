@@ -1,0 +1,15 @@
+# Live webcam mode (Logitech StreamCam) on the video-source Pi.
+# Mutually exclusive with video-stream.service (both send to :5000).
+# Switch with video-mode.sh cam. Uses the Pi4 HW H.264 encoder (h264_v4l2m2m),
+# MJPEG in from the cam -> ~68% of one core (decode), encode is offloaded.
+[Unit]
+Description=Live webcam (Logitech StreamCam) -> Pi2 kiosk
+After=network-online.target
+Conflicts=video-stream.service
+[Service]
+ExecStartPre=/bin/sh -c "ip addr add 192.168.1.9/24 dev eth0 2>/dev/null; true"
+ExecStart=/usr/bin/ffmpeg -hide_banner -loglevel error -f v4l2 -input_format mjpeg -video_size 1280x720 -framerate 30 -i /dev/video0 -c:v h264_v4l2m2m -b:v 4M -g 30 -pix_fmt yuv420p -f mpegts udp://192.168.1.7:5000?pkt_size=1316
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target
