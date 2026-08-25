@@ -30,7 +30,9 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 # dmabuf path so the hardware-decoded frames never touch the CPU; fall back to
 # the generic GPU vo, then to KMS/DRM if we're on a bare console.
 if [ -n "${WAYLAND_DISPLAY:-}" ]; then
-  VO="--vo=dmabuf-wl --gpu-context=wayland"
+  # --vo=gpu is present in every mpv build; dmabuf-wl (zero-copy) only in newer
+  # ones, so don't hard-depend on it.
+  VO="--vo=gpu --gpu-context=wayland"
 elif [ -n "${DISPLAY:-}" ]; then
   VO="--vo=gpu"
 else

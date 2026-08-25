@@ -15,10 +15,20 @@ set -u
 
 PORT="${TRAFGEN_VIDEO_PORT:-5000}"
 
-# kmssink drives the display plane directly (bare console / DRM master).
-# If a desktop compositor owns the screen, swap kmssink for `glimagesink` or
-# `waylandsink` and run this inside the session instead.
-SINK="${TRAFGEN_GST_SINK:-kmssink force-modesetting=true}"
+# Sink must match the session. kmssink drives the display plane directly and
+# needs DRM master - it FAILS if a compositor (labwc/wayfire, the Pi OS desktop
+# default) already owns the screen. So auto-pick: waylandsink inside Wayland,
+# glimagesink inside X11, kmssink only on a bare console. Override with
+# TRAFGEN_GST_SINK.
+if [ -n "${TRAFGEN_GST_SINK:-}" ]; then
+  SINK="$TRAFGEN_GST_SINK"
+elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  SINK="waylandsink fullscreen=true"
+elif [ -n "${DISPLAY:-}" ]; then
+  SINK="glimagesink"
+else
+  SINK="kmssink force-modesetting=true"
+fi
 
 while true; do
   gst-launch-1.0 -q \
