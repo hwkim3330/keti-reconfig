@@ -36,7 +36,16 @@ SERVICE_UUID = "4b455449-5447-454e-0000-000000000000"
 CONTROL_UUID = "4b455449-5447-454e-0000-000000000001"
 STATUS_UUID = "4b455449-5447-454e-0000-000000000002"
 
-LOCAL_NAME = "KETI-TRAFGEN"
+def _local_name() -> str:
+    # Distinguish the two Pis for the tablet: name by role (/etc/pi-trafgen/view).
+    try:
+        view = open("/etc/pi-trafgen/view").read().strip()
+    except OSError:
+        view = ""
+    return {"tx": "KETI-TRAFGEN-TX", "video": "KETI-TRAFGEN-RX"}.get(view, "KETI-TRAFGEN")
+
+
+LOCAL_NAME = _local_name()
 NOTIFY_MS = 500
 
 
