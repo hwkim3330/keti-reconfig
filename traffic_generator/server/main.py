@@ -404,13 +404,21 @@ async def ws_video(sock: WebSocket) -> None:
     if not relay.running:
         await relay.start(VIDEO_PORT)
     q = relay.subscribe()
-    try:
+
+    async def pump() -> None:               # server -> client: video bytes
         while True:
-            data = await q.get()
-            await sock.send_bytes(data)
-    except (WebSocketDisconnect, RuntimeError):
-        return
+            await sock.send_bytes(await q.get())
+
+    async def watch() -> None:              # detect the client going away, even
+        while True:                          # when NO video is flowing (the leak:
+            await sock.receive()             # a blocked send never noticed it)
+
+    tasks = [asyncio.create_task(pump()), asyncio.create_task(watch())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     finally:
+        for t in tasks:
+            t.cancel()
         relay.unsubscribe(q)
 
 

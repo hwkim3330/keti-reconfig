@@ -490,7 +490,7 @@ let liveRecoverAt = 0;
 function scheduleLiveRecover() {
   if (videoSrcMode !== "live") return;
   const now = Date.now();
-  if (now - liveRecoverAt < 4000) return;   // debounce a burst of errors
+  if (now - liveRecoverAt < 8000) return;   // debounce a burst of errors
   liveRecoverAt = now;
   setTimeout(() => { if (videoSrcMode === "live") setVideoSource("live"); }, 300);
 }
