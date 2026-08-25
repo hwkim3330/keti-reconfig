@@ -34,7 +34,14 @@ echo pktgen > /etc/modules-load.d/pktgen.conf
 # 2. deps
 apt-get update -qq
 apt-get install -y python3-venv python3-pip curl >/dev/null
-[[ $KIOSK -eq 1 ]] && apt-get install -y chromium-browser >/dev/null || true
+if [[ $KIOSK -eq 1 ]]; then
+  # chromium for the tx/control panels; mpv + gstreamer for the native video
+  # panel (hardware H.264 decode - the browser path caps at ~20 Mbps, see
+  # kiosk/README.md). vlc is the zero-install fallback and is usually present.
+  apt-get install -y chromium-browser >/dev/null || true
+  apt-get install -y mpv gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+                     gstreamer1.0-libav >/dev/null 2>&1 || true
+fi
 
 # 3. copy code
 mkdir -p "$DEST"

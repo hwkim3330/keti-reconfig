@@ -8,8 +8,17 @@
 set -u
 
 # Role of this panel, if any: /etc/pi-trafgen/view = "tx" (sender: transmit graph)
-# or "video" (receiver: video + receive graph). Empty -> full tabbed UI.
+# or "video" (receiver: protected video). Empty -> full tabbed UI.
 VIEW="$(cat /etc/pi-trafgen/view 2>/dev/null | tr -dc 'a-z')"
+
+# The video role does NOT use the browser: high-bitrate video is played by a
+# native hardware-decoding player (mpv/GStreamer) so it isn't capped by the
+# ~20 Mbps Python-relay + MSE path. Hand off and never launch Chromium here.
+if [ "$VIEW" = "video" ]; then
+  HERE="$(dirname "$(readlink -f "$0")")"
+  exec "$HERE/video-player.sh"
+fi
+
 URL="http://localhost:8080/"
 [ -n "$VIEW" ] && URL="http://localhost:8080/?view=$VIEW"
 
