@@ -14,15 +14,16 @@ import pathlib
 import time
 from dataclasses import asdict
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import netstat, pktgen, presets, video
+from . import d10, netstat, pktgen, presets, video
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
+MANAGE = ROOT / "web-manage"   # unified control app (flood + D10 switch, PLM design)
 CONFIG_PATH = pathlib.Path(os.environ.get("TRAFGEN_CONFIG", "/etc/pi-trafgen/config.json"))
 USER_PRESETS_PATH = pathlib.Path(
     os.environ.get("TRAFGEN_USER_PRESETS", "/etc/pi-trafgen/user_presets.json")
@@ -287,6 +288,23 @@ def api_status() -> dict:
     return state.status()
 
 
+# --- D10 switch (WebStaX JSON-RPC) proxy -----------------------------------
+@app.get("/api/d10/switches")
+def api_d10_switches() -> dict:
+    return {"switches": d10.SWITCHES, "default": d10.DEFAULT_HOST}
+
+
+@app.get("/api/d10/health")
+def api_d10_health() -> dict:
+    return d10.health()
+
+
+@app.post("/api/d10/rpc")
+async def api_d10_rpc(request: Request, host: str | None = None) -> dict:
+    body = (await request.body()).decode() or "{}"
+    return d10.rpc(body, host=host)
+
+
 @app.post("/api/start")
 def api_start() -> dict:
     if runner.running:
@@ -496,8 +514,16 @@ def index() -> FileResponse:
     return FileResponse(WEB / "index.html")
 
 
+# Unified control app (PacketLabManager design): flood + video + D10 switch.
+@app.get("/manage")
+def manage() -> FileResponse:
+    return FileResponse(MANAGE / "index.html")
+
+
 # video files (served with range support by StaticFiles, so <video> can seek)
 if MEDIA_DIR is not None:
     app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
+if MANAGE.is_dir():
+    app.mount("/manage", StaticFiles(directory=MANAGE, html=True), name="manage")
 app.mount("/", StaticFiles(directory=WEB), name="web")

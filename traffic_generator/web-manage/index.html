@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KETI TSN Console</title>
+  <link rel="stylesheet" href="/manage/styles.css">
+</head>
+<body>
+<div id="toastTray" class="toast-tray" aria-live="polite"></div>
+
+<div class="shell">
+  <header class="topbar">
+    <span class="brand">KETI TSN Console<small>traffic · video · Kontron D10 (WebStaX)</small></span>
+    <span class="spacer"></span>
+    <span class="hint">switch</span>
+    <select id="switchSel" class="mono"></select>
+    <span class="pill" id="d10Link">checking…</span>
+  </header>
+
+  <nav class="tabbar" aria-label="Main views">
+    <button class="tab active" data-view="trafficView">Traffic</button>
+    <button class="tab" data-view="dashView">Dashboard</button>
+    <button class="tab" data-view="cbsView">CBS</button>
+    <button class="tab" data-view="tasView">TAS (Qbv)</button>
+    <button class="tab" data-view="frerView">FRER</button>
+    <button class="tab" data-view="qosView">QoS / PCP</button>
+    <button class="tab" data-view="consoleView">Console</button>
+  </nav>
+
+  <div class="content">
+
+    <!-- ══ Traffic (flood generator) ═══════════════════════════════════════ -->
+    <section id="trafficView" class="view active">
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-header"><span class="ph-title">Flood generator (pktgen)</span>
+            <div class="ph-actions"><span class="pill" id="genState">—</span></div>
+          </div>
+          <div class="panel-body">
+            <div class="row">
+              <label class="field">Preset <select id="genPreset" class="mono"></select></label>
+              <button class="primary" id="genStart">▶ START</button>
+              <button class="danger" id="genStop">■ STOP</button>
+            </div>
+            <div class="row" style="margin-top:14px;gap:24px">
+              <div><div class="hint">THROUGHPUT</div><div style="font-size:26px"><b id="genMbps">0</b> <small class="hint">Mbps</small></div></div>
+              <div><div class="hint">PACKET RATE</div><div style="font-size:26px"><b id="genKpps">0</b> <small class="hint">kpps</small></div></div>
+              <div><div class="hint">SENT</div><div style="font-size:26px"><b id="genSent">0</b> <small class="hint">pkts</small></div></div>
+            </div>
+            <canvas id="genChart" height="90" style="margin-top:12px;width:100%"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="ph-title">Demo · protect the video</span></div>
+          <div class="panel-body">
+            <div class="demo-status" id="demoStatus">— configure below —</div>
+            <p class="note" style="margin:10px 0">CBS reserves a credit slice for the video's egress
+              queue so a 1 Gbps flood on the best-effort queue can't starve it. FRER protects it
+              across the two switches (pull a link → no drop).</p>
+            <div class="row">
+              <label class="field">Video egress port <select id="demoPort" class="mono"></select></label>
+              <label class="field">Queue <select id="demoQueue"></select></label>
+              <label class="field">Reserve Mbps <input id="demoCir" type="number" value="250" style="width:80px"></label>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="primary" id="demoProtect">CBS protect ON</button>
+              <button class="danger" id="demoOff">CBS off</button>
+            </div>
+            <p class="hint" id="demoHint"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Video receiver</span>
+          <div class="ph-actions"><button class="small" id="vidRefresh">Refresh</button></div>
+        </div>
+        <div class="panel-body">
+          <div class="row" style="gap:24px">
+            <div><div class="hint">VIDEO RX (Pi2)</div><div style="font-size:22px"><b id="vidRx">—</b> <small class="hint">Mbps</small></div></div>
+            <div><div class="hint">LINK IN (total)</div><div style="font-size:22px"><b id="vidLink">—</b> <small class="hint">Mbps</small></div></div>
+            <div><div class="hint">RECEIVING</div><div style="font-size:22px"><b id="vidUp">—</b></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Dashboard ═══════════════════════════════════════════════════════ -->
+    <section id="dashView" class="view">
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Switch · ports</span>
+          <div class="ph-actions"><button class="small" id="refreshPorts">Refresh</button></div>
+        </div>
+        <div class="panel-body"><div class="ports" id="portGrid"><span class="note">loading…</span></div></div>
+      </div>
+    </section>
+
+    <!-- ══ CBS ═════════════════════════════════════════════════════════════ -->
+    <section id="cbsView" class="view">
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Credit-Based Shaper · per port / queue</span>
+          <div class="ph-actions"><label class="hint">Port <select id="cbsPort" class="mono"></select></label>
+            <button class="small" id="cbsLoad">Load</button></div>
+        </div>
+        <div class="panel-body">
+          <table><thead><tr><th>Queue</th><th>Enable</th><th>CBS</th><th>CIR (kbps)</th><th>Rate</th><th>Excess</th><th></th></tr></thead>
+            <tbody id="cbsRows"></tbody></table>
+          <p class="hint">Enable + CBS on a queue and set CIR to reserve its idleSlope (802.1Qav).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ TAS ═════════════════════════════════════════════════════════════ -->
+    <section id="tasView" class="view">
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Time-Aware Shaper · 802.1Qbv</span>
+          <div class="ph-actions"><label class="hint">Port <select id="tasPort" class="mono"></select></label>
+            <button class="small" id="tasLoad">Load</button></div>
+        </div>
+        <div class="panel-body">
+          <div class="row">
+            <label class="field">Gate <select id="tasEnable"><option value="false">off</option><option value="true">on</option></select></label>
+            <label class="field">Cycle µs <input id="tasCycle" type="number" value="1000"></label>
+            <label class="field">List len <input id="tasLen" type="number" value="2" min="0" max="8"></label>
+            <button class="small" id="tasApply">Apply</button>
+          </div>
+          <table style="margin-top:12px"><thead><tr><th>#</th><th>Gate states (8b)</th><th>Interval ns</th></tr></thead>
+            <tbody id="tasRows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ FRER ════════════════════════════════════════════════════════════ -->
+    <section id="frerView" class="view">
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">FRER · 802.1CB replicate / eliminate</span>
+          <div class="ph-actions"><button class="small" id="frerReload">Reload</button></div>
+        </div>
+        <div class="panel-body">
+          <table><thead><tr><th>#</th><th>Mode</th><th>VLAN</th><th>Egress</th><th>Alg</th><th>Active</th><th></th></tr></thead>
+            <tbody id="frerRows"><tr><td colspan="7" class="hint">—</td></tr></tbody></table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Add / edit instance</span></div>
+        <div class="panel-body">
+          <div class="row">
+            <label class="field">Inst # <input id="frerId" type="number" value="1" min="1" style="width:60px"></label>
+            <label class="field">Mode <select id="frerMode"><option value="generation">generation</option><option value="recovery">recovery</option></select></label>
+            <label class="field">VLAN <input id="frerVlan" type="number" value="1" style="width:70px"></label>
+            <label class="field">Alg <select id="frerAlg"><option value="vector">vector</option><option value="match">match</option></select></label>
+            <label class="field">History <input id="frerHist" type="number" value="8" style="width:60px"></label>
+            <label class="field">Reset ms <input id="frerReset" type="number" value="100" style="width:70px"></label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <label class="field">Stream IDs <input id="frerStreams" value="1" style="width:120px"></label>
+            <label class="field">Active <select id="frerActive"><option value="true">yes</option><option value="false">no</option></select></label>
+          </div>
+          <div style="margin-top:10px"><span class="hint">Egress ports</span><div class="ports" id="frerPorts" style="margin-top:6px"></div></div>
+          <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <label class="field">Stream # <input id="strmId" type="number" value="1" style="width:60px"></label>
+            <label class="field">match VLAN <input id="strmVlan" type="number" value="0" style="width:70px"></label>
+            <label class="field">match DMAC <input id="strmDmac" placeholder="any" style="width:140px"></label>
+            <label class="field">ingress <select id="strmIngress" class="mono"></select></label>
+            <button class="small" id="strmCreate">Create + attach</button>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="primary" id="frerApply">Apply instance</button>
+            <button class="danger" id="frerDelete">Delete instance</button>
+          </div>
+          <p class="hint">Create a stream (match DMAC/VLAN) + attach to ingress, then set its id as StreamId. Unused StreamIds stay 0.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ QoS / PCP ═══════════════════════════════════════════════════════ -->
+    <section id="qosView" class="view">
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Ingress PCP → priority (tagToCos)</span>
+          <div class="ph-actions"><label class="hint">Port <select id="qosPort" class="mono"></select></label>
+            <button class="small" id="qosLoad">Load</button></div>
+        </div>
+        <div class="panel-body">
+          <table><thead><tr><th>PCP</th><th>→ CoS</th><th>→ DPL</th></tr></thead><tbody id="qosRows"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Console ═════════════════════════════════════════════════════════ -->
+    <section id="consoleView" class="view">
+      <div class="panel">
+        <div class="panel-header"><span class="ph-title">Raw JSON-RPC</span></div>
+        <div class="panel-body">
+          <div class="row">
+            <label class="field" style="flex:1">method <input id="rpcMethod" list="methodList" value="port.status.get" style="width:100%"></label>
+            <label class="field" style="flex:1">params <input id="rpcParams" value="[]" style="width:100%"></label>
+            <button class="primary" id="rpcSend">Send</button>
+          </div>
+          <datalist id="methodList"></datalist>
+          <pre class="console" id="rpcOut">—</pre>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+<script src="/manage/app.js"></script>
+</body>
+</html>

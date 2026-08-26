@@ -25,6 +25,12 @@ OSD="$(dirname "$(readlink -f "$0")")/video-osd.lua"
 # Wayland (labwc/wayfire, the bookworm/trixie default) exports these into the
 # desktop session; inherit them so a systemd/autostart launch reaches the seat.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# If WAYLAND_DISPLAY isn't in the env (e.g. launched detached), find the socket.
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  for s in "$XDG_RUNTIME_DIR"/wayland-*; do
+    [ -S "$s" ] && { export WAYLAND_DISPLAY="$(basename "$s")"; break; }
+  done
+fi
 
 # Pick the video output that matches the session. On Wayland prefer a zero-copy
 # dmabuf path so the hardware-decoded frames never touch the CPU; fall back to
@@ -81,8 +87,11 @@ while true; do
       ;;
     cvlc)
       # VLC decodes H.264 on the Pi via the MMAL/V4L2 hardware path.
+      # --no-media-library + memory keystore stop VLC touching gnome-keyring
+      # (which otherwise throws an unlock dialog over the kiosk).
       cvlc --intf dummy --fullscreen --no-video-title-show \
         --no-osd --avcodec-hw=any --network-caching=200 \
+        --no-media-library --keystore memory --no-plugins-cache \
         "udp://@:${PORT}" vlc://quit \
         2>/dev/null
       ;;
