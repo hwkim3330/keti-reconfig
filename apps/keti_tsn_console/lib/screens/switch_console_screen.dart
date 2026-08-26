@@ -652,8 +652,6 @@ class _ScenarioRail extends ConsumerWidget {
     // The demo's BLE link (to Pi1 / KETI-TRAFGEN). Pi1 bridges flood + the D10s.
     final tg = ref.watch(trafficGenProvider);
     final piUp = tg.link == TgLink.online;
-    final switchUp = state.switches.isNotEmpty &&
-        state.switches.values.every((s) => s.ethernetLinkUp);
 
     return _Glass(
       child: Column(
@@ -678,25 +676,32 @@ class _ScenarioRail extends ConsumerWidget {
           // All three are reached through Pi1's BLE bridge; per-Pi BLE status is
           // refined once each Pi advertises its own peripheral.
           const _ModuleLine(
-            name: 'Video source',
+            name: 'Video Pi',
             connected: false,
             fresh: false,
             detail: 'HD stream',
           ),
           _ModuleLine(
-            name: 'Sender · switch ctrl',
+            name: 'Sender Pi',
             connected: piUp,
             fresh: piUp,
-            detail: tg.running
-                ? 'flood ${tg.last.mbps.round()} Mbps'
-                : (switchUp ? 'switch up' : ''),
+            detail: tg.running ? 'flood ${tg.last.mbps.round()} Mbps' : '',
           ),
           _ModuleLine(
-            name: 'Receiver · kiosk',
+            name: 'Receiver Pi',
             connected: piUp,
             fresh: piUp,
-            detail: 'plays video',
+            detail: 'kiosk',
           ),
+          // Paths kept alongside the Pis (status-only now — fault injection is
+          // driven from the Sequences list, not per-path Cut buttons).
+          for (final path in [1, 2])
+            _PathStatusLine(
+              path: path,
+              snapshot: state.pathSnapshots[path],
+              connected: state.connected
+                  .contains(path == 1 ? KetiDevice.path1 : KetiDevice.path2),
+            ),
           const SizedBox(height: 18),
           const Text('Activity', style: _kSectionTitle),
           const SizedBox(height: 8),
