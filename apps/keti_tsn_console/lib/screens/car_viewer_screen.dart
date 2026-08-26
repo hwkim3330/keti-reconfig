@@ -298,8 +298,8 @@ class _CarViewerScreenState extends ConsumerState<CarViewerScreen> {
             disableZoom: false,
             cameraControls: true,
             autoRotate: false,
-            cameraOrbit: '45deg 65deg 100%',
-            cameraTarget: 'auto 8m auto',
+            cameraOrbit: '40deg 70deg 92%',
+            cameraTarget: 'auto 4.5m auto',
             relatedJs: modelViewerScript,
             onWebViewCreated: (controller) {
               ref.read(viewerServiceProvider).setController(controller);

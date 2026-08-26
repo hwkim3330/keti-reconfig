@@ -262,8 +262,10 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
             // model-viewer swings a hand cursor across the model to invite a drag. On a fixed
             // console it just looks like the vehicle is drifting.
             interactionPrompt: InteractionPrompt.none,
-            cameraOrbit: '45deg 68deg 105%',
-            cameraTarget: 'auto 8m auto',
+            // Aim lower and pull in a little so the TSN boards (floor of the
+            // vehicle) sit centred rather than the cabin.
+            cameraOrbit: '40deg 70deg 92%',
+            cameraTarget: 'auto 4.5m auto',
             relatedJs: modelViewerScript,
             onWebViewCreated: (controller) {
               ref.read(viewerServiceProvider).setController(controller);
