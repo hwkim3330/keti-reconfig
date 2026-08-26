@@ -693,14 +693,15 @@ class _ScenarioRail extends ConsumerWidget {
             fresh: piUp,
             detail: 'kiosk',
           ),
-          // Paths kept alongside the Pis (status-only now — fault injection is
-          // driven from the Sequences list, not per-path Cut buttons).
+          // Paths kept alongside the Pis, same row layout so the status column
+          // lines up. Status-only — fault injection is driven from Sequences.
           for (final path in [1, 2])
-            _PathStatusLine(
-              path: path,
-              snapshot: state.pathSnapshots[path],
+            _ModuleLine(
+              name: 'Path $path',
               connected: state.connected
                   .contains(path == 1 ? KetiDevice.path1 : KetiDevice.path2),
+              fresh: _fresh(state.pathSnapshots[path]?.receivedAt),
+              detail: (state.pathSnapshots[path]?.faulted ?? false) ? 'Fault' : 'Normal',
             ),
           const SizedBox(height: 18),
           const Text('Activity', style: _kSectionTitle),
