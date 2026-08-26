@@ -36,6 +36,14 @@ SERVICE_UUID = "4b455449-5447-454e-0000-000000000000"
 CONTROL_UUID = "4b455449-5447-454e-0000-000000000001"
 STATUS_UUID = "4b455449-5447-454e-0000-000000000002"
 
+# D10 switch topology (this Pi = TX/Pi1 bridges to both switches by JSON-RPC).
+D10_GEN = "192.168.100.2"     # switch 1 — generation side
+D10_REC = "192.168.100.4"     # switch 2 — recovery side, Pi2 hangs off it
+VIDEO_EGRESS = "Gi 1/2"       # SW2 port to the receiver Pi
+VIDEO_QUEUE = 6               # the class the video is mapped to (CoS 6)
+RING_PORT = {"1": "Gi 1/4", "2": "Gi 1/6"}   # the two ring links on SW1
+_cbs_mbps = 250               # remembered CBS reservation, applied on cbs:on
+
 def _local_name() -> str:
     # Distinguish the two Pis for the tablet: name by role (/etc/pi-trafgen/view).
     try:
@@ -60,9 +68,25 @@ def _get(path: str) -> dict:
         return json.loads(r.read().decode())
 
 
+# -- D10 switch bridge (JSON-RPC via the local /api/d10 proxy) --------------
+def _d10(host: str, method: str, params: list) -> dict:
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    req = urllib.request.Request(
+        f"{API}/api/d10/rpc?host={host}", data=body,
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return json.loads(r.read().decode())
+
+
+def _d10_get(host: str, method: str, params: list):
+    return _d10(host, method, params).get("result")
+
+
 def handle_command(text: str) -> None:
+    global _cbs_mbps
     text = text.strip()
     try:
+        # -- traffic generator (this node's local API) ----------------------
         if text == "start":
             _post("/api/start")
         elif text == "stop":
@@ -71,6 +95,56 @@ def handle_command(text: str) -> None:
             _post(f"/api/preset/{text[7:]}")
         elif text.startswith("user:"):
             _post(f"/api/userpresets/{urllib.parse.quote(text[5:])}/load")
+
+        # -- CBS (802.1Qav) on the receiver egress queue --------------------
+        elif text == "cbs:on":
+            _d10(D10_REC, "qos.config.interface.queueShaper.set", [VIDEO_EGRESS, VIDEO_QUEUE,
+                 {"Enable": True, "Credit": True, "Cir": _cbs_mbps * 1000, "RateType": "line", "Excess": False}])
+        elif text == "cbs:off":
+            _d10(D10_REC, "qos.config.interface.queueShaper.set", [VIDEO_EGRESS, VIDEO_QUEUE,
+                 {"Enable": False, "Credit": False, "Cir": 500, "RateType": "line", "Excess": False}])
+        elif text.startswith("cbs:mbps:"):
+            _cbs_mbps = int(text.rsplit(":", 1)[1])   # applied on the next cbs:on
+
+        # -- FRER (802.1CB) instance 1 on both switches ---------------------
+        elif text in ("frer:on", "frer:off"):
+            active = text == "frer:on"
+            for sw in (D10_GEN, D10_REC):
+                conf = _d10_get(sw, "frer.config.get", [1])
+                if isinstance(conf, dict):
+                    conf["AdminActive"] = active
+                    _d10(sw, "frer.config.set", [1, conf])
+        elif text.startswith("frer:alg:"):
+            alg = text.rsplit(":", 1)[1]              # vector | match
+            for sw in (D10_GEN, D10_REC):
+                conf = _d10_get(sw, "frer.config.get", [1])
+                if isinstance(conf, dict):
+                    conf["Algorithm"] = alg
+                    _d10(sw, "frer.config.set", [1, conf])
+
+        # -- TAS (802.1Qbv) gates on the receiver egress --------------------
+        elif text in ("tas:on", "tas:off"):
+            p = _d10_get(D10_REC, "tsn.config.interface.tas.params.get", [VIDEO_EGRESS])
+            if isinstance(p, dict):
+                p["GateEnabled"] = text == "tas:on"
+                _d10(D10_REC, "tsn.config.interface.tas.params.set", [VIDEO_EGRESS, p])
+        elif text.startswith("tas:cycle:"):
+            us = int(text.rsplit(":", 1)[1])
+            p = _d10_get(D10_REC, "tsn.config.interface.tas.params.get", [VIDEO_EGRESS])
+            if isinstance(p, dict):
+                p["AdminCycleTimeNumerator"] = us
+                p["AdminCycleTimeDenominator"] = 1000000
+                _d10(D10_REC, "tsn.config.interface.tas.params.set", [VIDEO_EGRESS, p])
+
+        # -- FRER link cut / restore (shutdown a ring port on SW1) ----------
+        elif text.startswith(("cut:", "restore:")):
+            action, which = text.split(":", 1)
+            port = RING_PORT.get(which)
+            if port:
+                cfg = _d10_get(D10_GEN, "port.config.get", [port])
+                if isinstance(cfg, dict):
+                    cfg["Shutdown"] = action == "cut"
+                    _d10(D10_GEN, "port.config.set", [port, cfg])
     except Exception as exc:  # noqa: BLE001 - a bad command must not kill the peripheral
         print(f"[ble] command {text!r} failed: {exc}")
 

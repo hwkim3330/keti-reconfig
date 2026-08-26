@@ -38,10 +38,10 @@ service   4b455449-5447-454e-0000-000000000000
 | `stop` | stop it | implemented |
 | `preset:<key>` | load a preset (`line_rate_1500`, `small_frame_stress`, `cbs_tc2_tc6`, …) | implemented |
 | `user:<name>` | load a saved user preset | implemented |
-| `cbs:on` / `cbs:off` | D10: reserve/release the video queue's CBS slice (via JSON-RPC) | **TODO in ble_gatt.py** |
-| `frer:on` / `frer:off` | D10: FRER AdminActive on both switches | **TODO** |
-| `tas:on` / `tas:off` | D10: TAS gate enable | **TODO** |
-| `cut:<link>` / `restore:<link>` | D10: shutdown/up a ring port (Gi 1/4, Gi 1/6) for the FRER link-down sequences | **TODO** |
+| `cbs:on` / `cbs:off` · `cbs:mbps:<N>` | reserve/release the video queue.s CBS slice on SW2 Gi1/2 q6 | implemented |
+| `frer:on/off` · `frer:alg:<vector|match>` | FRER instance 1 AdminActive/algorithm on both switches | implemented |
+| `tas:on/off` · `tas:cycle:<us>` | TAS gate enable/cycle on SW2 Gi1/2 | implemented |
+| `cut:<1|2>` / `restore:<1|2>` | shutdown/up ring port Gi1/4 or Gi1/6 on SW1 | implemented |
 
 **Status notify** (JSON): flood `{mbps, pps, sent, running}` today; the D10 demo
 should also carry `{frer, cbs, tas, links}` so the tablet's TSN-switch panel can
