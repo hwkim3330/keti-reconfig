@@ -151,6 +151,9 @@ class TrafficGenBle {
   Future<void> start() => _send('start');
   Future<void> stop() => _send('stop');
   Future<void> loadPreset(String key) => _send('preset:$key');
+  // Raw control command (D10 demo: cbs:on/off, frer:on/off, tas:on/off,
+  // cut:<link>/restore:<link>) — Pi1 relays it to the switches over JSON-RPC.
+  Future<void> sendRaw(String cmd) => _send(cmd);
   Future<void> loadUserPreset(String name) => _send('user:$name');
 
   Future<void> disconnect() async {

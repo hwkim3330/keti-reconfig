@@ -997,6 +997,47 @@ class _SwitchPanel extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          // D10 TSN shapers. These are relayed to the two switches by Pi1
+          // (tablet -> BLE KETI-TRAFGEN-TX -> JSON-RPC), and stay in the saved
+          // config, so they're toggled here, not rebuilt per sequence.
+          const Text('Shapers', style: _kSectionTitle),
+          const SizedBox(height: 6),
+          for (final f in const [
+            ['FRER', 'frer'],
+            ['CBS', 'cbs'],
+            ['TAS', 'tas'],
+          ])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 52,
+                    child: Text(f[0],
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF374151))),
+                  ),
+                  _TextAction(
+                    label: 'on',
+                    enabled: true,
+                    onTap: () => ref
+                        .read(trafficGenProvider.notifier)
+                        .sendControl('${f[1]}:on'),
+                  ),
+                  const SizedBox(width: 14),
+                  _TextAction(
+                    label: 'off',
+                    enabled: true,
+                    onTap: () => ref
+                        .read(trafficGenProvider.notifier)
+                        .sendControl('${f[1]}:off'),
+                  ),
+                ],
+              ),
+            ),
           if (present.length > 1) ...[
             const SizedBox(height: 10),
             Row(

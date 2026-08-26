@@ -243,6 +243,13 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
         state = state.copyWith(status: st, clearMessage: true);
       });
 
+  /// Raw control command over BLE (D10 TSN toggles: frer/cbs/tas:on|off,
+  /// cut/restore:<link>). Pi1 relays it to the two D10 switches via JSON-RPC.
+  Future<void> sendControl(String cmd) => _guard(() async {
+        if (state.isBle) await _ble.sendRaw(cmd);
+        state = state.copyWith(clearMessage: true);
+      });
+
   Future<void> stop() => _guard(() async {
         if (state.isBle) {
           await _ble.stop();
