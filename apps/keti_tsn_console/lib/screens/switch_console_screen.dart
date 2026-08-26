@@ -689,8 +689,6 @@ class _ScenarioRail extends ConsumerWidget {
               snapshot: state.pathSnapshots[path],
               connected: state.connected
                   .contains(path == 1 ? KetiDevice.path1 : KetiDevice.path2),
-              onSet: (faulted) =>
-                  ref.read(ketiLinkServiceProvider).setPathFault(path, faulted),
             ),
           const SizedBox(height: 18),
           const Text('Activity', style: _kSectionTitle),
@@ -841,13 +839,11 @@ class _PathStatusLine extends StatelessWidget {
     required this.path,
     required this.snapshot,
     required this.connected,
-    required this.onSet,
   });
 
   final int path;
   final PathSnapshot? snapshot;
   final bool connected;
-  final void Function(bool faulted) onSet;
 
   @override
   Widget build(BuildContext context) {
@@ -879,26 +875,8 @@ class _PathStatusLine extends StatelessWidget {
                     : (faulted ? 'Fault' : 'Normal')),
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colour),
           ),
-          const SizedBox(width: 10),
-          // Direct control alongside the sequences. A sequence sets both paths at once, which
-          // is the story being demonstrated; this is for poking one path on its own without
-          // changing what the sequence list says is selected.
-          GestureDetector(
-            onTap: live ? () => onSet(!faulted) : null,
-            behavior: HitTestBehavior.opaque,
-            child: SizedBox(
-              width: 52,
-              child: Text(
-                faulted ? 'Restore' : 'Cut',
-                textAlign: TextAlign.end,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: live ? const Color(0xFF2563EB) : const Color(0xFFC3C9D4),
-                ),
-              ),
-            ),
-          ),
+          // Modules are status-only now: path fault-injection is driven from the
+          // Sequences list, not per-module Cut/Restore buttons.
         ],
       ),
     );
