@@ -997,47 +997,12 @@ class _SwitchPanel extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          // D10 TSN shapers. These are relayed to the two switches by Pi1
-          // (tablet -> BLE KETI-TRAFGEN-TX -> JSON-RPC), and stay in the saved
-          // config, so they're toggled here, not rebuilt per sequence.
+          const SizedBox(height: 12),
+          // TSN shapers with in-panel tabs: each feature shows the parameter
+          // that matters, not just on/off. Relayed to the two D10s by Pi1.
           const Text('Shapers', style: _kSectionTitle),
-          const SizedBox(height: 6),
-          for (final f in const [
-            ['FRER', 'frer'],
-            ['CBS', 'cbs'],
-            ['TAS', 'tas'],
-          ])
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 52,
-                    child: Text(f[0],
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF374151))),
-                  ),
-                  _TextAction(
-                    label: 'on',
-                    enabled: true,
-                    onTap: () => ref
-                        .read(trafficGenProvider.notifier)
-                        .sendControl('${f[1]}:on'),
-                  ),
-                  const SizedBox(width: 14),
-                  _TextAction(
-                    label: 'off',
-                    enabled: true,
-                    onTap: () => ref
-                        .read(trafficGenProvider.notifier)
-                        .sendControl('${f[1]}:off'),
-                  ),
-                ],
-              ),
-            ),
+          const SizedBox(height: 8),
+          const _ShaperTabs(),
           if (present.length > 1) ...[
             const SizedBox(height: 10),
             Row(
@@ -1641,6 +1606,122 @@ const _kPresets = [
   _Preset('fast', 'TC7 200 us'),
   _Preset('off', 'No gating'),
 ];
+
+/// In-panel tabs for the three TSN shapers. Each tab shows the parameter that
+/// matters, then Enable / Disable. Commands go over BLE to Pi1, which relays
+/// them to the two D10 switches by JSON-RPC.
+class _ShaperTabs extends ConsumerStatefulWidget {
+  const _ShaperTabs();
+  @override
+  ConsumerState<_ShaperTabs> createState() => _ShaperTabsState();
+}
+
+class _ShaperTabsState extends ConsumerState<_ShaperTabs> {
+  int _tab = 0; // 0 CBS, 1 TAS, 2 FRER
+  final _sel = <int, String>{0: '250', 1: '1000', 2: 'vector'};
+
+  static const _tabs = ['CBS', 'TAS', 'FRER'];
+  static const _tabSub = [
+    '802.1Qav · reserve the video queue',
+    '802.1Qbv · time-aware gates',
+    '802.1CB · seamless redundancy',
+  ];
+  static const _params = [
+    [['100', 'Mbps'], ['250', 'Mbps'], ['500', 'Mbps']],
+    [['250', 'µs'], ['500', 'µs'], ['1000', 'µs']],
+    [['vector', ''], ['match', '']],
+  ];
+  static const _onCmd = ['cbs', 'tas', 'frer'];
+  static const _param = ['cbs:mbps:', 'tas:cycle:', 'frer:alg:'];
+
+  void _send(String c) => ref.read(trafficGenProvider.notifier).sendControl(c);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // tab strip
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F2F6),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < _tabs.length; i++)
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _tab = i),
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _tab == i ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(7),
+                        boxShadow: _tab == i
+                            ? [const BoxShadow(color: Color(0x14000000), blurRadius: 4)]
+                            : null,
+                      ),
+                      child: Text(_tabs[i],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: _tab == i
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFF9AA3B2))),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(_tabSub[_tab], style: const TextStyle(fontSize: 11, color: Color(0xFF9AA3B2))),
+        const SizedBox(height: 8),
+        // parameter chips
+        Wrap(
+          spacing: 6,
+          children: [
+            for (final p in _params[_tab])
+              GestureDetector(
+                onTap: () {
+                  setState(() => _sel[_tab] = p[0]);
+                  _send('${_param[_tab]}${p[0]}');
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _sel[_tab] == p[0] ? const Color(0xFFEDF2FD) : const Color(0xFFF5F6F9),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(
+                        color: _sel[_tab] == p[0] ? const Color(0xFF2563EB) : const Color(0xFFE2E6EE)),
+                  ),
+                  child: Text('${p[0]}${p[1].isEmpty ? '' : ' ${p[1]}'}',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: _sel[_tab] == p[0]
+                              ? const Color(0xFF2563EB)
+                              : const Color(0xFF6B7280))),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _TextAction(label: 'Enable', enabled: true, onTap: () => _send('${_onCmd[_tab]}:on')),
+            const SizedBox(width: 16),
+            _TextAction(label: 'Disable', enabled: true, onTap: () => _send('${_onCmd[_tab]}:off')),
+          ],
+        ),
+      ],
+    );
+  }
+}
 
 class _TextAction extends StatelessWidget {
   const _TextAction({required this.label, required this.enabled, required this.onTap});
