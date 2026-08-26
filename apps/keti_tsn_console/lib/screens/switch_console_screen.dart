@@ -7,6 +7,7 @@ import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../core/constants.dart';
 import '../core/js_scripts.dart';
 import '../providers/keti_link_provider.dart';
+import '../providers/traffic_gen_provider.dart';
 import '../providers/viewer_service_provider.dart';
 import '../services/keti_link_service.dart';
 import 'traffic_gen_screen.dart';
@@ -94,8 +95,8 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
         schedule: 'strict', schedulePort: '1'),
     _Scenario('path2', 'Mode 2 - path 2 down', 'Reroute, fast cycle', {1: false, 2: true},
         schedule: 'fast', schedulePort: '1'),
-    _Scenario('both', 'Mode 3 - both down', 'No reroute left', {1: true, 2: true},
-        schedule: 'off', schedulePort: '1'),
+    // "Both down" dropped: with both ring links cut there is no path left for FRER
+    // to recover over, so it only shows a dead link, not the seamless story.
     // A switch-side link failure, a different layer from a relay cut on a path module. The
     // switch dying outright is deliberately not a scenario: the console would lose the data it
     // reports with, so that is a state to display well, not a button.
@@ -648,6 +649,11 @@ class _ScenarioRail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final live = [KetiDevice.path1, KetiDevice.path2].every(state.connected.contains);
+    // The demo's BLE link (to Pi1 / KETI-TRAFGEN). Pi1 bridges flood + the D10s.
+    final tg = ref.watch(trafficGenProvider);
+    final piUp = tg.link == TgLink.online;
+    final switchUp = state.switches.isNotEmpty &&
+        state.switches.values.every((s) => s.ethernetLinkUp);
 
     return _Glass(
       child: Column(
@@ -667,29 +673,30 @@ class _ScenarioRail extends ConsumerWidget {
           const SizedBox(height: 18),
           const Text('Modules', style: _kSectionTitle),
           const SizedBox(height: 8),
-          // The switch controller is a module too. Listing only the path modules made the
-          // board that does the CORECONF work the one thing with no row of its own.
-          _ModuleLine(
-            name: 'Switch ctrl',
-            connected: state.presentSwitches.any(state.connected.contains) ||
-                state.connected.contains(KetiDevice.switch1),
-            fresh: state.switches.values.any((s) => _fresh(s.receivedAt)),
-            detail: state.switches.isEmpty
-                ? ''
-                : (state.switches.values.every((s) => s.ethernetLinkUp)
-                    ? 'Ethernet up'
-                    : 'Ethernet down'),
+          // The three Pis of the demo. Pi1 (sender) also drives the two D10
+          // switches over JSON-RPC, so it doubles as the switch controller.
+          // All three are reached through Pi1's BLE bridge; per-Pi BLE status is
+          // refined once each Pi advertises its own peripheral.
+          const _ModuleLine(
+            name: 'Video source',
+            connected: false,
+            fresh: false,
+            detail: 'HD stream',
           ),
-          // Separate from the scenario buttons on purpose: one is what was asked for, the
-          // other is what the hardware says happened, and a console that shows only the first
-          // proves nothing.
-          for (final path in [1, 2])
-            _PathStatusLine(
-              path: path,
-              snapshot: state.pathSnapshots[path],
-              connected: state.connected
-                  .contains(path == 1 ? KetiDevice.path1 : KetiDevice.path2),
-            ),
+          _ModuleLine(
+            name: 'Sender · switch ctrl',
+            connected: piUp,
+            fresh: piUp,
+            detail: tg.running
+                ? 'flood ${tg.last.mbps.round()} Mbps'
+                : (switchUp ? 'switch up' : ''),
+          ),
+          _ModuleLine(
+            name: 'Receiver · kiosk',
+            connected: piUp,
+            fresh: piUp,
+            detail: 'plays video',
+          ),
           const SizedBox(height: 18),
           const Text('Activity', style: _kSectionTitle),
           const SizedBox(height: 8),
