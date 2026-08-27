@@ -72,7 +72,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - lib/assets/roii_reconfig.glb
     - lib/assets/roii_reconfig_recon.glb
     - lib/assets/keti_logo.png
 
