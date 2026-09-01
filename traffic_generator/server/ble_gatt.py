@@ -36,12 +36,19 @@ SERVICE_UUID = "4b455449-5447-454e-0000-000000000000"
 CONTROL_UUID = "4b455449-5447-454e-0000-000000000001"
 STATUS_UUID = "4b455449-5447-454e-0000-000000000002"
 
-# D10 switch topology (this Pi = TX/Pi1 bridges to both switches by JSON-RPC).
-D10_GEN = "192.168.100.2"     # switch 1 — generation side
-D10_REC = "192.168.100.4"     # switch 2 — recovery side, Pi2 hangs off it
-VIDEO_EGRESS = "Gi 1/2"       # SW2 port to the receiver Pi
-VIDEO_QUEUE = 6               # the class the video is mapped to (CoS 6)
-RING_PORT = {"1": "Gi 1/4", "2": "Gi 1/6"}   # the two ring links on SW1
+# D10 3-switch triangle (Pi1/TX bridges to all three by JSON-RPC).
+#   A .100.1  video zone / FRER generation   (video Pi on its port 1)
+#   B .100.2  detour zone + flood            (flood Pi on its port 1)
+#   C .100.4  rear / FRER recovery / receiver (receiver Pi on its port 1)
+# Ring: A<->B (Gi1/4 each), A<->C (A Gi1/6 -> C Gi1/4), B<->C (B Gi1/6 -> C Gi1/6).
+# The video on A reaches C over the DIRECT link A-C and the DETOUR A-B-C.
+D10_GEN = "192.168.100.1"     # A — generation (video source)
+D10_MID = "192.168.100.2"     # B — detour + flood
+D10_REC = "192.168.100.4"     # C rear — recovery (receiver)
+VIDEO_EGRESS = "Gi 1/1"       # C port 1 → the receiver Pi
+VIDEO_QUEUE = 6               # CoS the video is mapped to
+# App cut:1 = direct route (A→C, drop A's Gi1/6); cut:2 = detour (A→B, drop A's Gi1/4).
+RING_PORT = {"1": (D10_GEN, "Gi 1/6"), "2": (D10_GEN, "Gi 1/4")}
 _cbs_mbps = 250               # remembered CBS reservation, applied on cbs:on
 
 def _local_name() -> str:
@@ -136,15 +143,16 @@ def handle_command(text: str) -> None:
                 p["AdminCycleTimeDenominator"] = 1000000
                 _d10(D10_REC, "tsn.config.interface.tas.params.set", [VIDEO_EGRESS, p])
 
-        # -- FRER link cut / restore (shutdown a ring port on SW1) ----------
+        # -- FRER route cut / restore (shutdown a ring port) ----------------
         elif text.startswith(("cut:", "restore:")):
             action, which = text.split(":", 1)
-            port = RING_PORT.get(which)
-            if port:
-                cfg = _d10_get(D10_GEN, "port.config.get", [port])
+            hp = RING_PORT.get(which)
+            if hp:
+                host, port = hp
+                cfg = _d10_get(host, "port.config.get", [port])
                 if isinstance(cfg, dict):
                     cfg["Shutdown"] = action == "cut"
-                    _d10(D10_GEN, "port.config.set", [port, cfg])
+                    _d10(host, "port.config.set", [port, cfg])
     except Exception as exc:  # noqa: BLE001 - a bad command must not kill the peripheral
         print(f"[ble] command {text!r} failed: {exc}")
 
