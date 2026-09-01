@@ -491,9 +491,26 @@ class _DeviceSheet extends ConsumerWidget {
           _statRow('상태', tg.link == TgLink.online ? '연결됨' : '오프라인', tg.link == TgLink.online ? _green : _ink2),
         const SizedBox(height: 18),
         // actions
-        if (kind == 'sw')
-          _btn('Shaper 설정 (CBS · TAS · FRER)', _blue, Colors.white, onConfigure)
-        else if (kind == 'flood')
+        if (kind == 'sw') ...[
+          Row(children: [
+            Expanded(child: _btn('Ping', const Color(0xFFF0F2F6), _ink,
+                () => ref.read(trafficGenProvider.notifier).sendControl('q:ping:${d[2]}'))),
+            const SizedBox(width: 12),
+            Expanded(child: _btn('포트 상태', const Color(0xFFF0F2F6), _ink,
+                () => ref.read(trafficGenProvider.notifier).sendControl('q:ports:${d[2]}'))),
+          ]),
+          if (tg.queryResp.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12)),
+              child: Text(tg.queryResp, style: const TextStyle(color: _ink, fontSize: 12.5, height: 1.45, fontWeight: FontWeight.w500)),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _btn('Shaper 설정 (CBS · TAS · FRER)', _blue, Colors.white, onConfigure),
+        ] else if (kind == 'flood')
           Row(children: [
             Expanded(child: _btn('Start', _orange, Colors.white, () {
               ref.read(trafficGenProvider.notifier).sendControl('start'); Navigator.of(context).maybePop();

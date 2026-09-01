@@ -31,6 +31,8 @@ class TrafficGenBle {
   final _linkCtl = StreamController<bool>.broadcast();
   final _sampleCtl = StreamController<TgSample>.broadcast();
   final _runningCtl = StreamController<bool>.broadcast();
+  final _respCtl = StreamController<String>.broadcast();
+  String _lastResp = '';
 
   /// true when connected to the peripheral.
   Stream<bool> get link => _linkCtl.stream;
@@ -40,6 +42,9 @@ class TrafficGenBle {
 
   /// whether pktgen is currently running, per the peripheral.
   Stream<bool> get running => _runningCtl.stream;
+
+  /// Last on-demand diagnostic result (ping / port status) from the peripheral.
+  Stream<String> get responses => _respCtl.stream;
 
   bool get connected => _control != null;
 
@@ -131,6 +136,11 @@ class TrafficGenBle {
         txErrors: (j['e'] ?? 0) as int,
         txDropped: 0,
       ));
+      final q = (j['q'] ?? '') as String;
+      if (q.isNotEmpty && q != _lastResp) {
+        _lastResp = q;
+        _respCtl.add(q);
+      }
     } catch (_) {/* malformed frame - ignore */}
   }
 
@@ -172,6 +182,7 @@ class TrafficGenBle {
     _linkCtl.close();
     _sampleCtl.close();
     _runningCtl.close();
+    _respCtl.close();
   }
 }
 

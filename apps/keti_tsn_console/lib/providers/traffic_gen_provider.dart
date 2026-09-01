@@ -25,6 +25,7 @@ class TrafficGenState {
     this.plan,
     this.message,
     this.isError = false,
+    this.queryResp = '',
   });
 
   final TgTransport transport;
@@ -37,6 +38,9 @@ class TrafficGenState {
   final Map<String, dynamic>? plan;
   final String? message;
   final bool isError;
+
+  /// Last on-demand diagnostic result (ping / port status) from the BLE bridge.
+  final String queryResp;
 
   bool get running => status.running;
   bool get isBle => transport == TgTransport.ble;
@@ -56,6 +60,7 @@ class TrafficGenState {
     Map<String, dynamic>? plan,
     String? message,
     bool? isError,
+    String? queryResp,
     bool clearMessage = false,
   }) {
     return TrafficGenState(
@@ -69,6 +74,7 @@ class TrafficGenState {
       plan: plan ?? this.plan,
       message: clearMessage ? null : (message ?? this.message),
       isError: clearMessage ? false : (isError ?? this.isError),
+      queryResp: queryResp ?? this.queryResp,
     );
   }
 }
@@ -81,7 +87,7 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
   final TrafficGenService _svc;
   final TrafficGenBle _ble = TrafficGenBle();
   StreamSubscription? _wsSub;
-  StreamSubscription? _bleLinkSub, _bleSampleSub, _bleRunSub;
+  StreamSubscription? _bleLinkSub, _bleSampleSub, _bleRunSub, _bleRespSub;
   Timer? _reconnect, _bleRetry;
   bool _disposed = false;
 
@@ -128,6 +134,9 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
       state = state.copyWith(
           status: TgStatus(running: r, iface: 'eth0', linkMbps: null, operstate: 'up', elapsed: 0, error: null));
     });
+    _bleRespSub = _ble.responses.listen((q) {
+      state = state.copyWith(queryResp: q);
+    });
     _ble.connect();
   }
 
@@ -136,6 +145,7 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
     _bleLinkSub?.cancel();
     _bleSampleSub?.cancel();
     _bleRunSub?.cancel();
+    _bleRespSub?.cancel();
     _ble.disconnect();
   }
 

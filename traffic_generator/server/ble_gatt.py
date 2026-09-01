@@ -25,6 +25,8 @@ Runs on the system Python (needs python3-dbus / python3-gi), NOT the server venv
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 import urllib.parse
 import urllib.request
 
@@ -52,6 +54,7 @@ RING_PORT = {"1": (D10_GEN, "Gi 1/6"), "2": (D10_GEN, "Gi 1/4")}
 _cbs_mbps = 250               # remembered CBS reservation (Mbps), applied on cbs:on
 _cbs_port = VIDEO_EGRESS      # remembered CBS egress port, changeable from the tablet
 _cbs_queue = VIDEO_QUEUE      # remembered CBS queue/TC, changeable from the tablet
+_resp = ""                    # last on-demand query result (ping / port status), sent in the notify
 
 def _local_name() -> str:
     # Distinguish the two Pis for the tablet: name by role (/etc/pi-trafgen/view).
@@ -91,8 +94,46 @@ def _d10_get(host: str, method: str, params: list):
     return _d10(host, method, params).get("result")
 
 
+# -- on-demand diagnostics (call-based, not continuous) ---------------------
+def _run_ping(target: str) -> str:
+    """ICMP ping the target from this Pi (the bridge reaches the switch subnet).
+    Returns a short human string for the tablet, e.g. '192.168.100.1: 0.5 ms avg · 0% loss'."""
+    try:
+        out = subprocess.run(["ping", "-c", "5", "-W", "1", target],
+                             capture_output=True, text=True, timeout=12).stdout
+        loss = "?"
+        avg = "?"
+        m = re.search(r"(\d+)% packet loss", out)
+        if m:
+            loss = m.group(1)
+        m = re.search(r"=\s*[\d.]+/([\d.]+)/", out)  # rtt min/avg/max
+        if m:
+            avg = m.group(1)
+        return f"{target}: {avg} ms avg · {loss}% loss"
+    except Exception:  # noqa: BLE001
+        return f"{target}: unreachable"
+
+
+def _fetch_ports(host: str) -> str:
+    """Live per-port link state of one D10 (JSON-RPC), compact for one MTU."""
+    res = _d10_get(host, "port.status.get", [])
+    if not isinstance(res, list):
+        return f"{host}: ports n/a"
+    up, down = [], []
+    for e in res:
+        name = (e.get("key", "") if isinstance(e, dict) else "").replace("Gi ", "").strip()
+        val = e.get("val", {}) if isinstance(e, dict) else {}
+        if not name:
+            continue
+        if val.get("Link"):
+            up.append(f"{name}({val.get('Speed', '').replace('speed', '')})")
+        else:
+            down.append(name)
+    return "UP " + " ".join(up) + (" · DOWN " + " ".join(down) if down else "")
+
+
 def handle_command(text: str) -> None:
-    global _cbs_mbps, _cbs_port, _cbs_queue
+    global _cbs_mbps, _cbs_port, _cbs_queue, _resp
     text = text.strip()
     try:
         # -- traffic generator (this node's local API) ----------------------
@@ -128,6 +169,12 @@ def handle_command(text: str) -> None:
             _d10(D10_REC, "qos.config.interface.queueShaper.set", [_cbs_port, _cbs_queue,
                  {"Enable": on, "Credit": on, "Cir": (_cbs_mbps * 1000) if on else 500,
                   "RateType": "line", "Excess": False}])
+
+        # -- on-demand diagnostics (result comes back in the status notify's "q") --
+        elif text.startswith("q:ping:"):
+            _resp = _run_ping(text.split(":", 2)[2])
+        elif text.startswith("q:ports:"):
+            _resp = _fetch_ports(text.split(":", 2)[2])
 
         # -- FRER (802.1CB) instance 1 on both switches ---------------------
         elif text in ("frer:on", "frer:off"):
@@ -193,6 +240,7 @@ def status_payload() -> bytes:
             "p": int(last.get("pps", 0)),
             "s": int(last.get("sent_packets", 0)),
             "e": int(last.get("tx_errors", 0)),
+            "q": _resp,   # last on-demand ping / port-status result
         }
     except Exception:  # noqa: BLE001 - server momentarily down => report idle
         obj = {"r": 0, "m": 0, "p": 0, "s": 0, "e": 0}
