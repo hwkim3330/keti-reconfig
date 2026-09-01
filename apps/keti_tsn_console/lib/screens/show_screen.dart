@@ -179,22 +179,27 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(color: (ok ? _green : _red).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(15)),
-            child: Icon(ok ? Icons.verified_rounded : Icons.error_rounded, color: ok ? _green : _red, size: 27),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Protected video', style: TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 3),
-              Text(ok ? 'PROTECTED' : 'DEGRADED',
-                  style: TextStyle(color: ok ? _green : _red, fontSize: 25, fontWeight: FontWeight.w800, letterSpacing: -0.8)),
-            ]),
-          ),
+          const Text('Video bitrate', style: TextStyle(color: _ink2, fontSize: 13, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          _StatusChip(ok: ok),
         ]),
-        const SizedBox(height: 22),
+        const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text(tg.videoMbps > 0 ? tg.videoMbps.toStringAsFixed(1) : '—',
+              style: TextStyle(color: ok ? _ink : _red, fontSize: 40, fontWeight: FontWeight.w800, letterSpacing: -1.5)),
+          const SizedBox(width: 7),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Text('Mbps', style: TextStyle(color: _ink2, fontSize: 14.5, fontWeight: FontWeight.w700)),
+          ),
+          const Spacer(),
+          if (tg.videoMbps > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: _green, shape: BoxShape.circle)),
+            ),
+        ]),
+        const SizedBox(height: 14),
         Row(children: [
           Expanded(child: _kpi('Reconfig', '0', 'ms', _blue)),
           const SizedBox(width: 10),
@@ -202,17 +207,17 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
         ]),
         const SizedBox(height: 10),
         _kpiWide('Flood load', floodOn ? '${genMbps.toStringAsFixed(0)} Mbps' : 'video only', floodOn ? _orange : _ink2, floodOn),
-        const SizedBox(height: 20),
-        Container(height: 1, color: _hair),
         const SizedBox(height: 16),
+        Container(height: 1, color: _hair),
+        const SizedBox(height: 14),
         const Text('SCENARIOS', style: TextStyle(color: _ink2, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.3)),
-        const SizedBox(height: 12),
+        const SizedBox(height: 11),
         Expanded(
           child: ListView.separated(
             padding: EdgeInsets.zero,
             physics: const BouncingScrollPhysics(),
             itemCount: scenarios.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, __) => const SizedBox(height: 7),
             itemBuilder: (_, i) => _ScenarioTile(scn: scenarios[i]),
           ),
         ),
@@ -251,12 +256,12 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
   // Inverted triangle, laid out like the vehicle: D10-1 front-left and D10-2
   // front-right up top, the rear D10-4 at the bottom apex, receiver below it.
   static const _pos = {
-    'video': Offset(0.08, 0.26),
-    'A': Offset(0.30, 0.26),
-    'B': Offset(0.70, 0.26),
-    'flood': Offset(0.92, 0.26),
-    'C': Offset(0.50, 0.66),
-    'recv': Offset(0.50, 0.90),
+    'video': Offset(0.09, 0.22),
+    'A': Offset(0.32, 0.22),
+    'B': Offset(0.68, 0.22),
+    'flood': Offset(0.91, 0.22),
+    'C': Offset(0.50, 0.58),
+    'recv': Offset(0.50, 0.85),
   };
 
   List<Widget> _nodes(Size s) {
@@ -461,17 +466,17 @@ class _ScenarioTile extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(13),
           border: Border.all(color: scn.active ? Colors.transparent : _hair),
         ),
         child: Row(children: [
-          Icon(scn.icon, size: 18, color: scn.active ? Colors.white : _ink2),
+          Icon(scn.icon, size: 17, color: scn.active ? Colors.white : _ink2),
           const SizedBox(width: 12),
           Text(scn.label,
-              style: TextStyle(color: fg, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: -0.2)),
+              style: TextStyle(color: fg, fontSize: 13.5, fontWeight: FontWeight.w600, letterSpacing: -0.2)),
           const Spacer(),
           if (scn.active)
             const Icon(Icons.circle, size: 6, color: Colors.white),
@@ -495,6 +500,26 @@ class _Pill extends StatelessWidget {
         Container(width: 6, height: 6, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
         const SizedBox(width: 7),
         Text(live ? 'Live' : 'Offline', style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+/// Small PROTECTED / DEGRADED status chip beside the live bitrate.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.ok});
+  final bool ok;
+  @override
+  Widget build(BuildContext context) {
+    final c = ok ? _green : _red;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(ok ? Icons.shield_rounded : Icons.warning_rounded, color: c, size: 13),
+        const SizedBox(width: 5),
+        Text(ok ? 'PROTECTED' : 'DEGRADED',
+            style: TextStyle(color: c, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.2)),
       ]),
     );
   }

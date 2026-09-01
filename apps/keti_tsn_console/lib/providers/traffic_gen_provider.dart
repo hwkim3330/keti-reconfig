@@ -26,6 +26,7 @@ class TrafficGenState {
     this.message,
     this.isError = false,
     this.queryResp = '',
+    this.videoMbps = 0,
   });
 
   final TgTransport transport;
@@ -41,6 +42,9 @@ class TrafficGenState {
 
   /// Last on-demand diagnostic result (ping / port status) from the BLE bridge.
   final String queryResp;
+
+  /// Live video bitrate (Mbps) measured at the switch egress toward the receiver.
+  final double videoMbps;
 
   bool get running => status.running;
   bool get isBle => transport == TgTransport.ble;
@@ -61,6 +65,7 @@ class TrafficGenState {
     String? message,
     bool? isError,
     String? queryResp,
+    double? videoMbps,
     bool clearMessage = false,
   }) {
     return TrafficGenState(
@@ -75,6 +80,7 @@ class TrafficGenState {
       message: clearMessage ? null : (message ?? this.message),
       isError: clearMessage ? false : (isError ?? this.isError),
       queryResp: queryResp ?? this.queryResp,
+      videoMbps: videoMbps ?? this.videoMbps,
     );
   }
 }
@@ -87,7 +93,7 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
   final TrafficGenService _svc;
   final TrafficGenBle _ble = TrafficGenBle();
   StreamSubscription? _wsSub;
-  StreamSubscription? _bleLinkSub, _bleSampleSub, _bleRunSub, _bleRespSub;
+  StreamSubscription? _bleLinkSub, _bleSampleSub, _bleRunSub, _bleRespSub, _bleVideoSub;
   Timer? _reconnect, _bleRetry;
   bool _disposed = false;
 
@@ -137,6 +143,9 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
     _bleRespSub = _ble.responses.listen((q) {
       state = state.copyWith(queryResp: q);
     });
+    _bleVideoSub = _ble.videoRates.listen((v) {
+      state = state.copyWith(videoMbps: v);
+    });
     _ble.connect();
   }
 
@@ -146,6 +155,7 @@ class TrafficGenNotifier extends StateNotifier<TrafficGenState> {
     _bleSampleSub?.cancel();
     _bleRunSub?.cancel();
     _bleRespSub?.cancel();
+    _bleVideoSub?.cancel();
     _ble.disconnect();
   }
 

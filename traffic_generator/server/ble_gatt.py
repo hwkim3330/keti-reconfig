@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 
@@ -47,7 +48,7 @@ STATUS_UUID = "4b455449-5447-454e-0000-000000000002"
 D10_GEN = "192.168.100.1"     # A — generation (video source)
 D10_MID = "192.168.100.2"     # B — detour + flood
 D10_REC = "192.168.100.4"     # C rear — recovery (receiver)
-VIDEO_EGRESS = "Gi 1/2"       # C egress carrying the FRER-recovered video (CBS lives here)
+VIDEO_EGRESS = "Gi 1/1"       # C egress to the receiver Pi (measured live path: A Gi1/1->Gi1/6->C Gi1/4->C Gi1/1)
 VIDEO_QUEUE = 6               # CoS/queue the video (PCP 6) is mapped to; flood is PCP 0 -> q0
 # App cut:1 = direct route (A→C, drop A's Gi1/6); cut:2 = detour (A→B, drop A's Gi1/4).
 RING_PORT = {"1": (D10_GEN, "Gi 1/6"), "2": (D10_GEN, "Gi 1/4")}
@@ -55,6 +56,7 @@ _cbs_mbps = 250               # remembered CBS reservation (Mbps), applied on cb
 _cbs_port = VIDEO_EGRESS      # remembered CBS egress port, changeable from the tablet
 _cbs_queue = VIDEO_QUEUE      # remembered CBS queue/TC, changeable from the tablet
 _resp = ""                    # last on-demand query result (ping / port status), sent in the notify
+_vrx_last = (0, 0.0)          # (TxOctets, monotonic time) of the video egress, for a live rate
 
 def _local_name() -> str:
     # Distinguish the two Pis for the tablet: name by role (/etc/pi-trafgen/view).
@@ -112,6 +114,25 @@ def _run_ping(target: str) -> str:
         return f"{target}: {avg} ms avg · {loss}% loss"
     except Exception:  # noqa: BLE001
         return f"{target}: unreachable"
+
+
+def _video_mbps() -> float:
+    """Live video bitrate, measured at the switch: the egress octets of the C port that
+    feeds the receiver Pi (reachable from the bridge, unlike the .77.x receiver itself)."""
+    global _vrx_last
+    try:
+        r = _d10_get(D10_REC, "port.statistics.ifGroup.get", [VIDEO_EGRESS])
+        if not isinstance(r, dict):
+            return 0.0
+        octets = int(r.get("TxOctets", 0))
+        now = time.monotonic()
+        last_o, last_t = _vrx_last
+        _vrx_last = (octets, now)
+        if last_t and now > last_t and octets >= last_o:
+            return round((octets - last_o) * 8 / (now - last_t) / 1_000_000, 1)
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.0
 
 
 def _fetch_ports(host: str) -> str:
@@ -241,6 +262,7 @@ def status_payload() -> bytes:
             "s": int(last.get("sent_packets", 0)),
             "e": int(last.get("tx_errors", 0)),
             "q": _resp,   # last on-demand ping / port-status result
+            "v": _video_mbps(),   # live video bitrate at the receiver egress
         }
     except Exception:  # noqa: BLE001 - server momentarily down => report idle
         obj = {"r": 0, "m": 0, "p": 0, "s": 0, "e": 0}

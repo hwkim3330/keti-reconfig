@@ -32,6 +32,7 @@ class TrafficGenBle {
   final _sampleCtl = StreamController<TgSample>.broadcast();
   final _runningCtl = StreamController<bool>.broadcast();
   final _respCtl = StreamController<String>.broadcast();
+  final _videoCtl = StreamController<double>.broadcast();
   String _lastResp = '';
 
   /// true when connected to the peripheral.
@@ -45,6 +46,9 @@ class TrafficGenBle {
 
   /// Last on-demand diagnostic result (ping / port status) from the peripheral.
   Stream<String> get responses => _respCtl.stream;
+
+  /// Live video bitrate (Mbps) measured at the switch egress toward the receiver.
+  Stream<double> get videoRates => _videoCtl.stream;
 
   bool get connected => _control != null;
 
@@ -141,6 +145,7 @@ class TrafficGenBle {
         _lastResp = q;
         _respCtl.add(q);
       }
+      _videoCtl.add(((j['v'] ?? 0) as num).toDouble());
     } catch (_) {/* malformed frame - ignore */}
   }
 
@@ -183,6 +188,7 @@ class TrafficGenBle {
     _sampleCtl.close();
     _runningCtl.close();
     _respCtl.close();
+    _videoCtl.close();
   }
 }
 
