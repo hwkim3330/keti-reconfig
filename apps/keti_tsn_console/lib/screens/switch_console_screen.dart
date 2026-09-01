@@ -241,19 +241,36 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
     final snapshot = state.switches[active];
     _updateRates(snapshot);
     _recordEvents(state);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncModelFaults(state);
+    });
+
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: Color(0xFFF2F4F7)),
-          // The centre used to host a WebView 3D model of the vehicle, but on the
-          // tablet it lagged and never rendered offline. Dropped for a fast static
-          // console -- the live topology lives on the Show hero instead.
-          const Center(
-            child: Opacity(
-              opacity: 0.3,
-              child: Icon(Icons.hub_rounded, size: 88, color: Color(0xFF9AA3B2)),
-            ),
+          _viewer ??= ModelViewer(
+            backgroundColor: const Color(0xFFF2F4F7),
+            id: 'car',
+            src: 'lib/assets/roii_reconfig_recon.glb',
+            alt: 'KETI reconfigurable vehicle',
+            disablePan: true,
+            disableTap: true,
+            cameraControls: true,
+            autoRotate: false,
+            // model-viewer swings a hand cursor across the model to invite a drag. On a fixed
+            // console it just looks like the vehicle is drifting.
+            interactionPrompt: InteractionPrompt.none,
+            // Aim lower and pull in a little so the TSN boards (floor of the
+            // vehicle) sit centred rather than the cabin.
+            cameraOrbit: '40deg 70deg 92%',
+            cameraTarget: 'auto 4.5m auto',
+            relatedJs: modelViewerScript,
+            onWebViewCreated: (controller) {
+              ref.read(viewerServiceProvider).setController(controller);
+              _waitForJsAndInitialize();
+            },
           ),
           Positioned(
             left: 14,

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/traffic_gen_provider.dart';
 import '../providers/keti_link_provider.dart';
-import 'switch_console_screen.dart';
+import '../widgets/shaper_config.dart';
 
 /// Show mode — the demo's hero, Apple-grade light theme. A 3-switch FRER ring
 /// drawn as a clean upright triangle: the rear switch C is the apex (receiver
@@ -122,9 +122,14 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.tune_rounded, color: _ink2),
-                    tooltip: 'Config',
-                    onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SwitchConsoleScreen())),
+                    tooltip: 'Shaper config',
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+                      builder: (_) => const ShaperConfig(),
+                    ),
                   ),
                 ],
               ),
