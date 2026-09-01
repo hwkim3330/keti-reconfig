@@ -20,15 +20,20 @@ class ShowScreen extends ConsumerStatefulWidget {
 // Three D10s.  A=.1 video · B=.2 detour+flood · C=.4 rear/receiver.
 const _swA = 'D10-1', _swB = 'D10-2', _swC = 'D10-4';
 
-// Apple palette (light).
-const _bg = Color(0xFFF5F5F7);
-const _ink = Color(0xFF1D1D1F);
-const _ink2 = Color(0xFF6E6E73);
-const _blue = Color(0xFF007AFF);
-const _green = Color(0xFF34C759);
-const _red = Color(0xFFFF3B30);
-const _orange = Color(0xFFFF9500);
-const _idle = Color(0xFFD2D2D7);
+// Refined light palette — restrained grayscale + one accent + status only.
+const _bg = Color(0xFFF4F4F6);   // clean canvas
+const _ink = Color(0xFF15151A);  // deep near-black for headings
+const _ink2 = Color(0xFF8A8A92); // soft secondary
+const _hair = Color(0xFFEAEAEF); // hairline borders / dividers
+const _blue = Color(0xFF0A84FF); // the single accent
+const _green = Color(0xFF2FC85A);
+const _red = Color(0xFFFF453A);
+const _orange = Color(0xFFF59E0B);
+const _idle = Color(0xFFDADAE0);
+
+// Soft, diffuse elevation (premium depth, not a hard drop shadow).
+const _shadowSoft = [BoxShadow(color: Color(0x0A000000), blurRadius: 24, offset: Offset(0, 8))];
+const _shadowCard = [BoxShadow(color: Color(0x0D000000), blurRadius: 20, offset: Offset(0, 6))];
 
 class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProviderStateMixin {
   bool _flood = false, _cbs = false, _frer = true;
@@ -92,91 +97,155 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(28, 20, 20, 6),
-              child: Row(
-                children: [
-                  Image.asset('lib/assets/keti_logo.png', height: 30),
-                  const SizedBox(width: 12),
-                  Container(width: 1, height: 22, color: _idle),
-                  const SizedBox(width: 12),
-                  const Text('TSN Reconfig',
-                      style: TextStyle(color: _ink, fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                    decoration: BoxDecoration(
-                        color: (tg.link == TgLink.online ? _green : _ink2).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20)),
-                    child: Text(tg.link == TgLink.online ? 'live' : 'offline',
-                        style: TextStyle(
-                            color: tg.link == TgLink.online ? _green : _ink2,
-                            fontSize: 11.5, fontWeight: FontWeight.w600)),
-                  ),
-                  const Spacer(),
-                  _Verdict(protected: ok, floodMbps: genMbps, live: tg.link == TgLink.online),
-                  const SizedBox(width: 10),
-                  _ReconfigStat(active: directDown || detourDown, protected: ok),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.tune_rounded, color: _ink2),
-                    tooltip: 'Shaper config',
-                    onPressed: () => showModalBottomSheet<void>(
-                      context: context,
-                      backgroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-                      builder: (_) => const ShaperConfig(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: LayoutBuilder(builder: (_, c) {
-                return CustomPaint(
-                  painter: _RingPainter(
-                      directDown: directDown, detourDown: detourDown,
-                      floodOn: floodOn, protected: ok, anim: _flow),
-                  child: Stack(children: [..._linkZones(c.biggest, tg), ..._nodes(c.biggest)]),
-                );
-              }),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
-              child: Wrap(
-                spacing: 12, runSpacing: 12, alignment: WrapAlignment.center,
-                children: [
-                  _Chapter('Normal', Icons.check_circle_rounded, false, () {
-                    _inject(1, false); _inject(2, false);
-                    _run(['stop', 'restore:1', 'restore:2', 'frer:on'],
-                        () { _flood = false; _cbs = false; _frer = true; _cut.clear(); });
+        child: Column(children: [
+          // ---- top bar ----
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 18, 22, 6),
+            child: Row(children: [
+              Image.asset('lib/assets/keti_logo.png', height: 27),
+              const SizedBox(width: 13),
+              Container(width: 1, height: 20, color: _hair),
+              const SizedBox(width: 13),
+              const Text('TSN Reconfig',
+                  style: TextStyle(color: _ink, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
+              const Spacer(),
+              _Pill(live: tg.link == TgLink.online),
+              const SizedBox(width: 12),
+              _CircleBtn(icon: Icons.tune_rounded, onTap: () => _openShaper(context)),
+            ]),
+          ),
+          // ---- dashboard: live rail + topology hero ----
+          Expanded(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _leftRail(context, tg, ok, directDown, detourDown, floodOn, genMbps),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 22, 22),
+                  child: LayoutBuilder(builder: (_, c) {
+                    return CustomPaint(
+                      painter: _RingPainter(
+                          directDown: directDown, detourDown: detourDown,
+                          floodOn: floodOn, protected: ok, anim: _flow),
+                      child: Stack(children: [..._linkZones(c.biggest, tg), ..._nodes(c.biggest)]),
+                    );
                   }),
-                  _Chapter('Flood', Icons.bolt_rounded, false, () => _run(
-                      ['cbs:off', 'start'], () { _flood = true; _cbs = false; })),
-                  _Chapter('Protect · CBS', Icons.shield_rounded, true, () => _run(
-                      ['cbs:mbps:250', 'cbs:on', 'start'], () { _flood = true; _cbs = true; })),
-                  _Chapter('Cut · inject 1', Icons.link_off_rounded, directDown,
-                      () => _cutRoute(0, 1)),
-                  _Chapter('Cut · inject 2', Icons.link_off_rounded, detourDown,
-                      () => _cutRoute(1, 2)),
-                  _Chapter('FRER off', Icons.shuffle_rounded, false, () => _run(
-                      ['frer:off'], () => _frer = false)),
-                  _Chapter('Restore', Icons.restart_alt_rounded, false, () {
-                    _inject(1, false); _inject(2, false);
-                    _run(['restore:1', 'restore:2', 'frer:on'],
-                        () { _cut.clear(); _frer = true; });
-                  }),
-                ],
+                ),
               ),
-            ),
-          ],
-        ),
+            ]),
+          ),
+        ]),
       ),
     );
   }
+
+  void _openShaper(BuildContext context) => showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => const ShaperConfig(),
+      );
+
+  Widget _leftRail(BuildContext context, TrafficGenState tg, bool ok,
+      bool directDown, bool detourDown, bool floodOn, double genMbps) {
+    final pathsUp = 2 - (directDown ? 1 : 0) - (detourDown ? 1 : 0);
+    final scenarios = <_Scn>[
+      _Scn('Normal', Icons.check_circle_outline_rounded, false, false, () {
+        _inject(1, false); _inject(2, false);
+        _run(['stop', 'restore:1', 'restore:2', 'frer:on'],
+            () { _flood = false; _cbs = false; _frer = true; _cut.clear(); });
+      }),
+      _Scn('Flood', Icons.bolt_outlined, floodOn && !_cbs, false,
+          () => _run(['cbs:off', 'start'], () { _flood = true; _cbs = false; })),
+      _Scn('Protect · CBS', Icons.verified_user_outlined, _cbs, true,
+          () => _run(['cbs:mbps:250', 'cbs:on', 'start'], () { _flood = true; _cbs = true; })),
+      _Scn('Cut · inject 1', Icons.link_off_rounded, directDown, false, () => _cutRoute(0, 1)),
+      _Scn('Cut · inject 2', Icons.link_off_rounded, detourDown, false, () => _cutRoute(1, 2)),
+      _Scn('FRER off', Icons.shuffle_rounded, !_frer, false,
+          () => _run(['frer:off'], () => _frer = false)),
+      _Scn('Restore', Icons.restart_alt_rounded, false, false, () {
+        _inject(1, false); _inject(2, false);
+        _run(['restore:1', 'restore:2', 'frer:on'], () { _cut.clear(); _frer = true; });
+      }),
+    ];
+    return Container(
+      width: 384,
+      margin: const EdgeInsets.fromLTRB(20, 6, 6, 22),
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: _shadowSoft,
+        border: Border.all(color: _hair),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(color: (ok ? _green : _red).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(15)),
+            child: Icon(ok ? Icons.verified_rounded : Icons.error_rounded, color: ok ? _green : _red, size: 27),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Protected video', style: TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 3),
+              Text(ok ? 'PROTECTED' : 'DEGRADED',
+                  style: TextStyle(color: ok ? _green : _red, fontSize: 25, fontWeight: FontWeight.w800, letterSpacing: -0.8)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 22),
+        Row(children: [
+          Expanded(child: _kpi('Reconfig', '0', 'ms', _blue)),
+          const SizedBox(width: 10),
+          Expanded(child: _kpi('Paths up', '$pathsUp', '/2', pathsUp == 2 ? _green : (pathsUp == 1 ? _orange : _red))),
+        ]),
+        const SizedBox(height: 10),
+        _kpiWide('Flood load', floodOn ? '${genMbps.toStringAsFixed(0)} Mbps' : 'video only', floodOn ? _orange : _ink2, floodOn),
+        const SizedBox(height: 20),
+        Container(height: 1, color: _hair),
+        const SizedBox(height: 16),
+        const Text('SCENARIOS', style: TextStyle(color: _ink2, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.3)),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.separated(
+            padding: EdgeInsets.zero,
+            physics: const BouncingScrollPhysics(),
+            itemCount: scenarios.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (_, i) => _ScenarioTile(scn: scenarios[i]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _kpi(String label, String value, String unit, Color col) => Container(
+        padding: const EdgeInsets.fromLTRB(15, 12, 15, 13),
+        decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(17)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(color: _ink2, fontSize: 11.5, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Text(value, style: TextStyle(color: col, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+            const SizedBox(width: 2),
+            Text(unit, style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ]),
+        ]),
+      );
+
+  Widget _kpiWide(String label, String value, Color col, bool live) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+        decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(17)),
+        child: Row(children: [
+          Text(label, style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          if (live)
+            Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 7),
+                decoration: BoxDecoration(color: col, shape: BoxShape.circle)),
+          Text(value, style: TextStyle(color: col, fontSize: 14.5, fontWeight: FontWeight.w700)),
+        ]),
+      );
 
   // Upright triangle: C apex (top), A & B base (bottom). Receiver above C.
   // Inverted triangle, laid out like the vehicle: D10-1 front-left and D10-2
@@ -276,23 +345,23 @@ class _Node extends StatelessWidget {
   final _NodeSpec spec;
   @override
   Widget build(BuildContext context) => Container(
-        width: 120,
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        width: 118,
+        padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6))],
-          border: Border.all(color: spec.isSwitch ? _blue.withValues(alpha: 0.25) : const Color(0xFFECECEE)),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: _shadowCard,
+          border: Border.all(color: _hair),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(color: spec.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+            width: 36, height: 36,
+            decoration: BoxDecoration(color: spec.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(11)),
             child: Icon(spec.icon, color: spec.color, size: 20),
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 8),
           Text(spec.label, textAlign: TextAlign.center,
-              style: const TextStyle(color: _ink, fontSize: 11.5, fontWeight: FontWeight.w600)),
+              style: const TextStyle(color: _ink, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: -0.1)),
         ]),
       );
 }
@@ -315,15 +384,15 @@ class _RingPainter extends CustomPainter {
 
   // One edge: the base line plus, when the link is live, packets flowing a->b so the
   // path reads as real-time data movement rather than a static diagram.
-  void _edge(Canvas canvas, Offset a, Offset b, Color col, {bool flow = false, double w = 4}) {
+  void _edge(Canvas canvas, Offset a, Offset b, Color col, {bool flow = false, double w = 3}) {
     canvas.drawLine(a, b, Paint()..color = col..strokeWidth = w..strokeCap = StrokeCap.round);
     if (!flow) return;
     const n = 3;
     for (int i = 0; i < n; i++) {
       final t = (anim.value + i / n) % 1.0;
       final o = Offset.lerp(a, b, t)!;
-      canvas.drawCircle(o, 4, Paint()..color = _bg);          // halo so the dot reads over the line
-      canvas.drawCircle(o, 2.7, Paint()..color = col);
+      canvas.drawCircle(o, 3.4, Paint()..color = _bg);        // halo so the dot reads over the line
+      canvas.drawCircle(o, 2.1, Paint()..color = col);
     }
   }
 
@@ -337,7 +406,7 @@ class _RingPainter extends CustomPainter {
     _edge(canvas, a, c, directDown ? _red : _green, flow: !directDown);   // DIRECT A->C
     _edge(canvas, a, b, detourDown ? _red : _green, flow: !detourDown);   // DETOUR base A->B
     _edge(canvas, b, c, detourDown ? _red : _green, flow: !detourDown);   // DETOUR B->C
-    _edge(canvas, c, recv, protected ? _green : _red, flow: protected, w: 4.5); // delivery -> receiver
+    _edge(canvas, c, recv, protected ? _green : _red, flow: protected, w: 3.5); // delivery -> receiver
     if (directDown) _x(canvas, Offset.lerp(a, c, 0.5)!);
     if (detourDown) _x(canvas, Offset.lerp(b, c, 0.5)!);
 
@@ -367,70 +436,85 @@ class _RingPainter extends CustomPainter {
       o.floodOn != floodOn || o.protected != protected;
 }
 
-class _Verdict extends StatelessWidget {
-  const _Verdict({required this.protected, required this.floodMbps, required this.live});
-  final bool protected, live;
-  final double floodMbps;
+/// A scenario for the rail: label, icon, whether it is the current state, whether
+/// it is the primary (accent) action, and what to run.
+class _Scn {
+  const _Scn(this.label, this.icon, this.active, this.primary, this.onTap);
+  final String label;
+  final IconData icon;
+  final bool active, primary;
+  final VoidCallback onTap;
+}
+
+/// One refined scenario row in the left rail. Inactive = white with a hairline;
+/// active = filled (accent for the primary action, ink otherwise) — no candy.
+class _ScenarioTile extends StatelessWidget {
+  const _ScenarioTile({required this.scn});
+  final _Scn scn;
   @override
   Widget build(BuildContext context) {
-    final col = protected ? _green : _red;
-    // Live load figure straight off the generator telemetry, so Start shows here at once.
-    final load = floodMbps >= 1 ? '${floodMbps.toStringAsFixed(0)} Mbps load' : 'video only';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5))],
+    final bg = scn.active ? (scn.primary ? _blue : _ink) : Colors.white;
+    final fg = scn.active ? Colors.white : _ink;
+    return GestureDetector(
+      onTap: scn.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: scn.active ? Colors.transparent : _hair),
+        ),
+        child: Row(children: [
+          Icon(scn.icon, size: 18, color: scn.active ? Colors.white : _ink2),
+          const SizedBox(width: 12),
+          Text(scn.label,
+              style: TextStyle(color: fg, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: -0.2)),
+          const Spacer(),
+          if (scn.active)
+            const Icon(Icons.circle, size: 6, color: Colors.white),
+        ]),
       ),
+    );
+  }
+}
+
+/// Live / offline pill with a status dot.
+class _Pill extends StatelessWidget {
+  const _Pill({required this.live});
+  final bool live;
+  @override
+  Widget build(BuildContext context) {
+    final c = live ? _green : _ink2;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(protected ? Icons.verified_rounded : Icons.error_rounded, color: col, size: 19),
-        const SizedBox(width: 9),
-        Text(protected ? 'PROTECTED' : 'DEGRADED',
-            style: TextStyle(color: col, fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
-        const SizedBox(width: 10),
-        // Small live/offline dot next to the live load readout.
-        Container(width: 7, height: 7, decoration: BoxDecoration(
-            color: live ? _green : _idle, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(load, style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w500)),
+        Container(width: 6, height: 6, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 7),
+        Text(live ? 'Live' : 'Offline', style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600)),
       ]),
     );
   }
 }
 
-/// FRER recovery-time readout. FRER replicates on both paths continuously, so a
-/// path loss is covered with ZERO switchover — unlike RSTP/rerouting (tens of ms
-/// to seconds). Shown with units, and it turns into the headline "0 ms" the moment
-/// a path is actually down but the stream still holds.
-class _ReconfigStat extends StatelessWidget {
-  const _ReconfigStat({required this.active, required this.protected});
-  final bool active, protected;
+/// Round icon button (config), soft elevation + hairline.
+class _CircleBtn extends StatelessWidget {
+  const _CircleBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) {
-    final covering = active && protected; // a path is down yet the video holds
-    final col = protected ? _green : _red;
-    final ms = protected ? '0 ms' : '— ';
-    final tag = !protected ? 'link lost' : (covering ? 'seamless' : 'FRER armed');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: covering ? col.withValues(alpha: 0.12) : Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: covering
-            ? null
-            : const [BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5))],
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.timer_rounded, color: col, size: 17),
-        const SizedBox(width: 7),
-        Text('reconfig $ms',
-            style: TextStyle(color: col, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
-        const SizedBox(width: 6),
-        Text(tag, style: const TextStyle(color: _ink2, fontSize: 11.5, fontWeight: FontWeight.w500)),
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: _shadowCard, border: Border.all(color: _hair)),
+          child: Icon(icon, color: _ink, size: 20),
+        ),
+      );
 }
 
 /// Per-device detail sheet, opened by tapping a node. Shows identity + role, live
@@ -668,32 +752,4 @@ class _SparkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SparkPainter o) => o.values.length != values.length || o.color != color;
-}
-
-class _Chapter extends StatelessWidget {
-  const _Chapter(this.label, this.icon, this.primary, this.onTap);
-  final String label;
-  final IconData icon;
-  final bool primary;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-          decoration: BoxDecoration(
-            color: primary ? _blue : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 3))],
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, color: primary ? Colors.white : _blue, size: 19),
-            const SizedBox(width: 8),
-            Text(label,
-                style: TextStyle(
-                    color: primary ? Colors.white : _ink, fontSize: 14, fontWeight: FontWeight.w600)),
-          ]),
-        ),
-      );
 }
