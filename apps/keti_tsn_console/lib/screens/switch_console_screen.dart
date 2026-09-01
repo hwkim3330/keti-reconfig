@@ -1621,6 +1621,8 @@ class _ShaperTabs extends ConsumerStatefulWidget {
 class _ShaperTabsState extends ConsumerState<_ShaperTabs> {
   int _tab = 0; // 0 CBS, 1 TAS, 2 FRER
   final _sel = <int, String>{0: '250', 1: '1000', 2: 'vector'};
+  String _cbsPort = '2'; // C egress index (Gi 1/<n>) CBS applies to
+  int _cbsQueue = 6;     // queue / traffic class CBS shapes (video = TC6, flood = TC0)
 
   static const _tabs = ['CBS', 'TAS', 'FRER'];
   static const _tabSub = [
@@ -1637,6 +1639,47 @@ class _ShaperTabsState extends ConsumerState<_ShaperTabs> {
   static const _param = ['cbs:mbps:', 'tas:cycle:', 'frer:alg:'];
 
   void _send(String c) => ref.read(trafficGenProvider.notifier).sendControl(c);
+
+  // CBS is parametric so it can be applied at any point of contention: the tablet
+  // picks egress port + queue/TC + rate. TAS/FRER keep their simple on/off.
+  void _apply(bool on) {
+    if (_tab == 0) {
+      _send('cbs:cfg:$_cbsPort:$_cbsQueue:${_sel[0]}:${on ? 'on' : 'off'}');
+    } else {
+      _send('${_onCmd[_tab]}:${on ? 'on' : 'off'}');
+    }
+  }
+
+  Widget _picker(String label, List<String> opts, String cur,
+      void Function(String) onPick, String Function(String) fmt) {
+    return Row(children: [
+      SizedBox(
+          width: 76,
+          child: Text(label,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF9AA3B2), fontWeight: FontWeight.w600))),
+      Expanded(
+        child: Wrap(spacing: 6, children: [
+          for (final o in opts)
+            GestureDetector(
+              onTap: () => setState(() => onPick(o)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cur == o ? const Color(0xFFEDF2FD) : const Color(0xFFF5F6F9),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: cur == o ? const Color(0xFF2563EB) : const Color(0xFFE2E6EE)),
+                ),
+                child: Text(fmt(o),
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: cur == o ? const Color(0xFF2563EB) : const Color(0xFF6B7280))),
+              ),
+            ),
+        ]),
+      ),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1712,12 +1755,20 @@ class _ShaperTabsState extends ConsumerState<_ShaperTabs> {
               ),
           ],
         ),
+        if (_tab == 0) ...[
+          const SizedBox(height: 10),
+          _picker('Egress port', const ['1', '2', '4', '6'], _cbsPort,
+              (v) => _cbsPort = v, (v) => 'Gi 1/$v'),
+          const SizedBox(height: 7),
+          _picker('Queue · TC', const ['0', '2', '6'], '$_cbsQueue',
+              (v) => _cbsQueue = int.parse(v), (v) => v == '6' ? 'TC6 video' : (v == '0' ? 'TC0 flood' : 'TC$v')),
+        ],
         const SizedBox(height: 10),
         Row(
           children: [
-            _TextAction(label: 'Enable', enabled: true, onTap: () => _send('${_onCmd[_tab]}:on')),
+            _TextAction(label: 'Enable', enabled: true, onTap: () => _apply(true)),
             const SizedBox(width: 16),
-            _TextAction(label: 'Disable', enabled: true, onTap: () => _send('${_onCmd[_tab]}:off')),
+            _TextAction(label: 'Disable', enabled: true, onTap: () => _apply(false)),
           ],
         ),
       ],
