@@ -80,8 +80,12 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
               padding: const EdgeInsets.fromLTRB(28, 20, 20, 6),
               child: Row(
                 children: [
-                  const Text('KETI TSN',
-                      style: TextStyle(color: _ink, fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
+                  Image.asset('lib/assets/keti_logo.png', height: 30),
+                  const SizedBox(width: 12),
+                  Container(width: 1, height: 22, color: _idle),
+                  const SizedBox(width: 12),
+                  const Text('TSN Reconfig',
+                      style: TextStyle(color: _ink, fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
                   const SizedBox(width: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
