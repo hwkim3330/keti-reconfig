@@ -30,9 +30,19 @@ const _red = Color(0xFFFF3B30);
 const _orange = Color(0xFFFF9500);
 const _idle = Color(0xFFD2D2D7);
 
-class _ShowScreenState extends ConsumerState<ShowScreen> {
+class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProviderStateMixin {
   bool _flood = false, _cbs = false, _frer = true;
   final _cut = <int>{}; // 0 = direct A-C, 1 = detour A-B-C
+
+  // Drives the flowing-dot "data path" indicators so the topology reads as live.
+  late final AnimationController _flow =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+
+  @override
+  void dispose() {
+    _flow.dispose();
+    super.dispose();
+  }
 
   Future<void> _send(String c) => ref.read(trafficGenProvider.notifier).sendControl(c);
 
@@ -52,10 +62,10 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
         () => fault ? _cut.add(route) : _cut.remove(route));
   }
 
-  bool get _protected {
-    if (_flood && !_cbs) return false;
-    if (_cut.length >= 2) return false;
-    if (_cut.isNotEmpty && !_frer) return false;
+  bool _isProtected(bool directDown, bool detourDown) {
+    if (_flood && !_cbs) return false;                        // flood without CBS starves the video
+    if (directDown && detourDown) return false;               // both FRER paths gone
+    if ((directDown || detourDown) && !_frer) return false;   // a path lost, no FRER to cover it
     return true;
   }
 
@@ -70,7 +80,15 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
   @override
   Widget build(BuildContext context) {
     final tg = ref.watch(trafficGenProvider);
-    final ok = _protected;
+    final keti = ref.watch(ketiStateProvider).valueOrNull;
+    // Real injection-module fault state (path 1 = direct, path 2 = detour), merged with
+    // the local optimistic cut set so the map is right whether or not BLE telemetry is up.
+    final directDown = _cut.contains(0) || (keti?.pathSnapshots[1]?.faulted ?? false);
+    final detourDown = _cut.contains(1) || (keti?.pathSnapshots[2]?.faulted ?? false);
+    final ok = _isProtected(directDown, detourDown);
+    // Live generator telemetry: pressing Start (here or anywhere) flips tg.running + the rate.
+    final floodOn = tg.running || _flood;
+    final genMbps = tg.last.mbps;
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -98,7 +116,7 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
                             fontSize: 11.5, fontWeight: FontWeight.w600)),
                   ),
                   const Spacer(),
-                  _Verdict(protected: ok, rx: ok ? 250 : (_flood ? 40 : 0)),
+                  _Verdict(protected: ok, floodMbps: genMbps, live: tg.link == TgLink.online),
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.tune_rounded, color: _ink2),
@@ -112,7 +130,9 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
             Expanded(
               child: LayoutBuilder(builder: (_, c) {
                 return CustomPaint(
-                  painter: _RingPainter(cut: _cut, flood: _flood, protected: ok),
+                  painter: _RingPainter(
+                      directDown: directDown, detourDown: detourDown,
+                      floodOn: floodOn, protected: ok, anim: _flow),
                   child: Stack(children: _nodes(c.biggest)),
                 );
               }),
@@ -131,9 +151,9 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
                       ['cbs:off', 'start'], () { _flood = true; _cbs = false; })),
                   _Chapter('Protect · CBS', Icons.shield_rounded, true, () => _run(
                       ['cbs:mbps:250', 'cbs:on', 'start'], () { _flood = true; _cbs = true; })),
-                  _Chapter('Cut · inject 1', Icons.link_off_rounded, _cut.contains(0),
+                  _Chapter('Cut · inject 1', Icons.link_off_rounded, directDown,
                       () => _cutRoute(0, 1)),
-                  _Chapter('Cut · inject 2', Icons.link_off_rounded, _cut.contains(1),
+                  _Chapter('Cut · inject 2', Icons.link_off_rounded, detourDown,
                       () => _cutRoute(1, 2)),
                   _Chapter('FRER off', Icons.shuffle_rounded, false, () => _run(
                       ['frer:off'], () => _frer = false)),
@@ -165,12 +185,12 @@ class _ShowScreenState extends ConsumerState<ShowScreen> {
 
   List<Widget> _nodes(Size s) {
     final specs = <String, _NodeSpec>{
-      'recv': _NodeSpec('Receiver Pi', _green, Icons.smart_display_rounded, false),
+      'recv': _NodeSpec('Receiver · keti-rx', _green, Icons.smart_display_rounded, false),
       'C': _NodeSpec('$_swC · rear', _blue, Icons.dns_rounded, true),
       'A': _NodeSpec('$_swA · front-L', _blue, Icons.dns_rounded, true),
       'B': _NodeSpec('$_swB · front-R', _blue, Icons.dns_rounded, true),
-      'video': _NodeSpec('Video Pi', _ink, Icons.videocam_rounded, false),
-      'flood': _NodeSpec('Flood Pi', _orange, Icons.bolt_rounded, false),
+      'video': _NodeSpec('Video Send · keti-src', _ink, Icons.videocam_rounded, false),
+      'flood': _NodeSpec('Flood · keti-tx', _orange, Icons.bolt_rounded, false),
     };
     return [
       for (final e in _pos.entries)
@@ -218,30 +238,46 @@ class _Node extends StatelessWidget {
 }
 
 class _RingPainter extends CustomPainter {
-  _RingPainter({required this.cut, required this.flood, required this.protected});
-  final Set<int> cut;
-  final bool flood, protected;
+  _RingPainter({
+    required this.directDown,
+    required this.detourDown,
+    required this.floodOn,
+    required this.protected,
+    required this.anim,
+  }) : super(repaint: anim);
+  final bool directDown, detourDown, floodOn, protected;
+  final Animation<double> anim;
 
   Offset _p(Size s, String k) {
     final o = _ShowScreenState._pos[k]!;
     return Offset(o.dx * s.width, o.dy * s.height);
   }
 
+  // One edge: the base line plus, when the link is live, packets flowing a->b so the
+  // path reads as real-time data movement rather than a static diagram.
+  void _edge(Canvas canvas, Offset a, Offset b, Color col, {bool flow = false, double w = 4}) {
+    canvas.drawLine(a, b, Paint()..color = col..strokeWidth = w..strokeCap = StrokeCap.round);
+    if (!flow) return;
+    const n = 3;
+    for (int i = 0; i < n; i++) {
+      final t = (anim.value + i / n) % 1.0;
+      final o = Offset.lerp(a, b, t)!;
+      canvas.drawCircle(o, 4, Paint()..color = _bg);          // halo so the dot reads over the line
+      canvas.drawCircle(o, 2.7, Paint()..color = col);
+    }
+  }
+
   @override
   void paint(Canvas canvas, Size s) {
     final video = _p(s, 'video'), a = _p(s, 'A'), b = _p(s, 'B'),
         c = _p(s, 'C'), recv = _p(s, 'recv'), floodPi = _p(s, 'flood');
-    Paint pen(Color col, [double w = 4]) =>
-        Paint()..color = col..strokeWidth = w..strokeCap = StrokeCap.round;
 
-    final directDown = cut.contains(0), detourDown = cut.contains(1);
-
-    canvas.drawLine(video, a, pen(_green));
-    canvas.drawLine(floodPi, b, pen(flood ? _orange : _idle));
-    canvas.drawLine(a, c, pen(directDown ? _red : _green));         // DIRECT (left edge)
-    canvas.drawLine(a, b, pen(detourDown ? _red : _green));         // DETOUR base
-    canvas.drawLine(b, c, pen(detourDown ? _red : _green));         // DETOUR right edge
-    canvas.drawLine(c, recv, pen(protected ? _green : _red, 4.5));  // delivery
+    _edge(canvas, video, a, _green, flow: true);                          // video source -> A (always live)
+    _edge(canvas, floodPi, b, floodOn ? _orange : _idle, flow: floodOn);  // flood -> B (live when running)
+    _edge(canvas, a, c, directDown ? _red : _green, flow: !directDown);   // DIRECT A->C
+    _edge(canvas, a, b, detourDown ? _red : _green, flow: !detourDown);   // DETOUR base A->B
+    _edge(canvas, b, c, detourDown ? _red : _green, flow: !detourDown);   // DETOUR B->C
+    _edge(canvas, c, recv, protected ? _green : _red, flow: protected, w: 4.5); // delivery -> receiver
     if (directDown) _x(canvas, Offset.lerp(a, c, 0.5)!);
     if (detourDown) _x(canvas, Offset.lerp(b, c, 0.5)!);
 
@@ -266,16 +302,20 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter o) => o.cut != cut || o.flood != flood || o.protected != protected;
+  bool shouldRepaint(_RingPainter o) =>
+      o.directDown != directDown || o.detourDown != detourDown ||
+      o.floodOn != floodOn || o.protected != protected;
 }
 
 class _Verdict extends StatelessWidget {
-  const _Verdict({required this.protected, required this.rx});
-  final bool protected;
-  final int rx;
+  const _Verdict({required this.protected, required this.floodMbps, required this.live});
+  final bool protected, live;
+  final double floodMbps;
   @override
   Widget build(BuildContext context) {
     final col = protected ? _green : _red;
+    // Live load figure straight off the generator telemetry, so Start shows here at once.
+    final load = floodMbps >= 1 ? '${floodMbps.toStringAsFixed(0)} Mbps load' : 'video only';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
@@ -289,7 +329,11 @@ class _Verdict extends StatelessWidget {
         Text(protected ? 'PROTECTED' : 'DEGRADED',
             style: TextStyle(color: col, fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
         const SizedBox(width: 10),
-        Text('video $rx Mbps', style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w500)),
+        // Small live/offline dot next to the live load readout.
+        Container(width: 7, height: 7, decoration: BoxDecoration(
+            color: live ? _green : _idle, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(load, style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w500)),
       ]),
     );
   }
