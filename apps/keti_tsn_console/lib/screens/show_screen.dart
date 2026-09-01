@@ -140,7 +140,7 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
                   painter: _RingPainter(
                       directDown: directDown, detourDown: detourDown,
                       floodOn: floodOn, protected: ok, anim: _flow),
-                  child: Stack(children: _nodes(c.biggest)),
+                  child: Stack(children: [..._linkZones(c.biggest, tg), ..._nodes(c.biggest)]),
                 );
               }),
             ),
@@ -204,7 +204,60 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
         Positioned(
           left: e.value.dx * s.width - 60,
           top: e.value.dy * s.height - 32,
-          child: _Node(spec: specs[e.key]!),
+          child: GestureDetector(
+            onTap: () => _showDevice(e.key),
+            behavior: HitTestBehavior.opaque,
+            child: _Node(spec: specs[e.key]!),
+          ),
+        ),
+    ];
+  }
+
+  void _showDevice(String key) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => _DeviceSheet(
+        deviceKey: key,
+        onConfigure: () {
+          Navigator.of(context).maybePop();
+          showModalBottomSheet<void>(
+            context: context,
+            backgroundColor: Colors.white,
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+            builder: (_) => const ShaperConfig(),
+          );
+        },
+      ),
+    );
+  }
+
+  // Invisible tap targets over each edge midpoint, so a link opens its own sheet.
+  List<Widget> _linkZones(Size s, TrafficGenState tg) {
+    Offset p(String k) => Offset(_pos[k]!.dx * s.width, _pos[k]!.dy * s.height);
+    final mids = {
+      'src': Offset.lerp(p('video'), p('A'), 0.5)!,
+      'direct': Offset.lerp(p('A'), p('C'), 0.5)!,
+      'detour': Offset.lerp(p('B'), p('C'), 0.5)!,
+      'delivery': Offset.lerp(p('C'), p('recv'), 0.5)!,
+      'flood': Offset.lerp(p('flood'), p('B'), 0.5)!,
+    };
+    return [
+      for (final e in mids.entries)
+        Positioned(
+          left: e.value.dx - 42,
+          top: e.value.dy - 26,
+          child: GestureDetector(
+            onTap: () => showModalBottomSheet<void>(
+              context: context,
+              backgroundColor: Colors.white,
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+              builder: (_) => _LinkSheet(linkKey: e.key),
+            ),
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox(width: 84, height: 52),
+          ),
         ),
     ];
   }
@@ -375,6 +428,166 @@ class _ReconfigStat extends StatelessWidget {
             style: TextStyle(color: col, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
         const SizedBox(width: 6),
         Text(tag, style: const TextStyle(color: _ink2, fontSize: 11.5, fontWeight: FontWeight.w500)),
+      ]),
+    );
+  }
+}
+
+/// Per-device detail sheet, opened by tapping a node. Shows identity + role, live
+/// status where the telemetry carries it (the flood generator's rate/running from
+/// the BLE bridge), and the relevant actions: switches jump to shaper config;
+/// the flood node starts/stops the generator.
+class _DeviceSheet extends ConsumerWidget {
+  const _DeviceSheet({required this.deviceKey, required this.onConfigure});
+  final String deviceKey;
+  final VoidCallback onConfigure;
+
+  // title, host, ip, role, icon, kind(sw|pi|flood)
+  static const _info = {
+    'video': ['Video Send', 'keti-src', '192.168.77.10', 'MPEG-TS 소스 · ffmpeg 1080p H.264 → UDP :5000', 'pi'],
+    'A': ['D10-1 · front-L', 'KSwitch D10', '192.168.100.1', 'FRER 전달 노드 · 우회 사본을 통과시킴', 'sw'],
+    'B': ['D10-2 · front-R', 'KSwitch D10', '192.168.100.2', 'FRER generation · 사본 2개 복제 (Gi 1/4 · 1/6)', 'sw'],
+    'C': ['D10-4 · rear', 'KSwitch D10', '192.168.100.4', 'FRER recovery + CBS · 중복 제거 후 수신 egress', 'sw'],
+    'recv': ['Receiver', 'keti-rx', '192.168.77.12', '영상 표시 · mpegts.js 키오스크 (HW 디코드)', 'pi'],
+    'flood': ['Flood', 'keti-tx', '192.168.100.10', '트래픽 생성 · pktgen 홍수 (best-effort TC0)', 'flood'],
+  };
+
+  static const _icon = {
+    'video': Icons.videocam_rounded, 'A': Icons.dns_rounded, 'B': Icons.dns_rounded,
+    'C': Icons.dns_rounded, 'recv': Icons.smart_display_rounded, 'flood': Icons.bolt_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = _info[deviceKey]!;
+    final kind = d[4];
+    final tg = ref.watch(trafficGenProvider);
+    final color = kind == 'sw' ? _blue : (kind == 'flood' ? _orange : _ink);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(
+            color: const Color(0xFFE2E6EE), borderRadius: BorderRadius.circular(2)))),
+        const SizedBox(height: 16),
+        Row(children: [
+          Container(width: 44, height: 44, decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+              child: Icon(_icon[deviceKey], color: color, size: 24)),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(d[0], style: const TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+            Text('${d[1]} · ${d[2]}', style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w500)),
+          ]),
+        ]),
+        const SizedBox(height: 14),
+        Text(d[3], style: const TextStyle(color: _ink2, fontSize: 13, height: 1.4)),
+        const SizedBox(height: 16),
+        // live status line
+        if (kind == 'flood')
+          _statRow('생성 속도', tg.running ? '${tg.last.mbps.toStringAsFixed(0)} Mbps · ${(tg.last.pps / 1000).toStringAsFixed(0)}k pps' : '정지', tg.running ? _orange : _ink2)
+        else if (kind == 'sw')
+          _statRow('링크', '1 Gbps · Gi 1/1·1/2·1/4·1/6', _green)
+        else
+          _statRow('상태', tg.link == TgLink.online ? '연결됨' : '오프라인', tg.link == TgLink.online ? _green : _ink2),
+        const SizedBox(height: 18),
+        // actions
+        if (kind == 'sw')
+          _btn('Shaper 설정 (CBS · TAS · FRER)', _blue, Colors.white, onConfigure)
+        else if (kind == 'flood')
+          Row(children: [
+            Expanded(child: _btn('Start', _orange, Colors.white, () {
+              ref.read(trafficGenProvider.notifier).sendControl('start'); Navigator.of(context).maybePop();
+            })),
+            const SizedBox(width: 12),
+            Expanded(child: _btn('Stop', const Color(0xFFF0F2F6), _ink, () {
+              ref.read(trafficGenProvider.notifier).sendControl('stop'); Navigator.of(context).maybePop();
+            })),
+          ])
+        else
+          _btn('닫기', const Color(0xFFF0F2F6), _ink, () => Navigator.of(context).maybePop()),
+      ]),
+    );
+  }
+
+  Widget _statRow(String k, String v, Color col) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          Text(k, style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Text(v, style: TextStyle(color: col, fontSize: 13, fontWeight: FontWeight.w700)),
+        ]),
+      );
+
+  Widget _btn(String label, Color bg, Color fg, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(height: 46, alignment: Alignment.center,
+            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(13)),
+            child: Text(label, style: TextStyle(color: fg, fontSize: 15, fontWeight: FontWeight.w700))),
+      );
+}
+
+/// Per-link detail sheet: which ports it runs on and its rate. The flood link
+/// shows the live generated rate; the video links show the stream rate.
+class _LinkSheet extends ConsumerWidget {
+  const _LinkSheet({required this.linkKey});
+  final String linkKey;
+
+  // title, endpoints, speed, kind(video|ring|flood)
+  static const _info = {
+    'src': ['영상 소스 링크', 'keti-src → D10-1 (Gi 1/1)', '1 Gbps', 'video'],
+    'direct': ['DIRECT · FRER 사본', 'D10-1 → D10-4 · Gi 1/6 ↔ Gi 1/4', '1 Gbps', 'ring'],
+    'detour': ['DETOUR · FRER 사본', 'D10-2 → D10-4 · Gi 1/6 ↔ Gi 1/6', '1 Gbps', 'ring'],
+    'delivery': ['수신 전달 (복구 후)', 'D10-4 → keti-rx · Gi 1/2 · CBS 250M q6', '1 Gbps', 'video'],
+    'flood': ['플러드 주입', 'keti-tx → D10-2 · TC0 best-effort', '1 Gbps', 'flood'],
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = _info[linkKey]!;
+    final tg = ref.watch(trafficGenProvider);
+    final kind = d[3];
+    final rateLabel = kind == 'flood'
+        ? (tg.running ? '${tg.last.mbps.toStringAsFixed(0)} Mbps · ${(tg.last.pps / 1000).toStringAsFixed(0)}k pps' : '정지')
+        : '영상 ~8 Mbps (1080p H.264)';
+    final rateCol = kind == 'flood' ? (tg.running ? _orange : _ink2) : _green;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(
+            color: const Color(0xFFE2E6EE), borderRadius: BorderRadius.circular(2)))),
+        const SizedBox(height: 16),
+        Row(children: [
+          Container(width: 44, height: 44, decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.route_rounded, color: _blue, size: 23)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(d[0], style: const TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+            Text(d[1], style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w500)),
+          ])),
+        ]),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            const Text('링크 속도', style: TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text(d[2], style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            Text(kind == 'flood' ? '생성 트래픽' : '스트림', style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text(rateLabel, style: TextStyle(color: rateCol, fontSize: 13, fontWeight: FontWeight.w700)),
+          ]),
+        ),
       ]),
     );
   }
