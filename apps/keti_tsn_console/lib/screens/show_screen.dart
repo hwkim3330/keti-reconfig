@@ -510,17 +510,26 @@ class _DeviceSheet extends ConsumerWidget {
           ],
           const SizedBox(height: 12),
           _btn('Shaper 설정 (CBS · TAS · FRER)', _blue, Colors.white, onConfigure),
-        ] else if (kind == 'flood')
+        ] else if (kind == 'flood') ...[
           Row(children: [
-            Expanded(child: _btn('Start', _orange, Colors.white, () {
-              ref.read(trafficGenProvider.notifier).sendControl('start'); Navigator.of(context).maybePop();
-            })),
+            Expanded(child: _btn('Start', _orange, Colors.white,
+                () => ref.read(trafficGenProvider.notifier).sendControl('start'))),
             const SizedBox(width: 12),
-            Expanded(child: _btn('Stop', const Color(0xFFF0F2F6), _ink, () {
-              ref.read(trafficGenProvider.notifier).sendControl('stop'); Navigator.of(context).maybePop();
-            })),
-          ])
-        else
+            Expanded(child: _btn('Stop', const Color(0xFFF0F2F6), _ink,
+                () => ref.read(trafficGenProvider.notifier).sendControl('stop'))),
+          ]),
+          if (tg.history.length > 1) ...[
+            const SizedBox(height: 16),
+            Row(children: [
+              const Text('생성 속도', style: TextStyle(color: _ink2, fontSize: 12, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text('${tg.last.mbps.toStringAsFixed(0)} Mbps · ${(tg.last.pps / 1000).toStringAsFixed(0)}k pps',
+                  style: const TextStyle(color: _orange, fontSize: 13, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 8),
+            _Sparkline(values: tg.history.map((e) => e.mbps).toList(), color: _orange),
+          ],
+        ] else
           _btn('닫기', const Color(0xFFF0F2F6), _ink, () => Navigator.of(context).maybePop()),
       ]),
     );
@@ -608,6 +617,57 @@ class _LinkSheet extends ConsumerWidget {
       ]),
     );
   }
+}
+
+/// Minimal live sparkline (single series, thin 2px line + faint fill, no axes) for
+/// the generated-rate history. Recessive by design -- the number beside it carries
+/// the value; this just shows the shape (flood spikes) over time.
+class _Sparkline extends StatelessWidget {
+  const _Sparkline({required this.values, required this.color});
+  final List<double> values;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 62,
+        width: double.infinity,
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12)),
+        child: CustomPaint(painter: _SparkPainter(values, color)),
+      );
+}
+
+class _SparkPainter extends CustomPainter {
+  _SparkPainter(this.values, this.color);
+  final List<double> values;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size s) {
+    if (values.length < 2) return;
+    final maxV = values.reduce((a, b) => a > b ? a : b);
+    final scale = maxV < 1 ? 1.0 : maxV;
+    final dx = s.width / (values.length - 1);
+    double y(double v) => s.height - (v / scale) * (s.height - 8) - 4;
+    final line = Path()..moveTo(0, y(values.first));
+    for (var i = 1; i < values.length; i++) {
+      line.lineTo(i * dx, y(values[i]));
+    }
+    final fill = Path.from(line)
+      ..lineTo(s.width, s.height)
+      ..lineTo(0, s.height)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.12));
+    canvas.drawPath(
+        line,
+        Paint()
+          ..color = color
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round);
+  }
+
+  @override
+  bool shouldRepaint(_SparkPainter o) => o.values.length != values.length || o.color != color;
 }
 
 class _Chapter extends StatelessWidget {
