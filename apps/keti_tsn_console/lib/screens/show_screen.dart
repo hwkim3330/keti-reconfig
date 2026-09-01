@@ -117,6 +117,8 @@ class _ShowScreenState extends ConsumerState<ShowScreen> with SingleTickerProvid
                   ),
                   const Spacer(),
                   _Verdict(protected: ok, floodMbps: genMbps, live: tg.link == TgLink.online),
+                  const SizedBox(width: 10),
+                  _ReconfigStat(active: directDown || detourDown, protected: ok),
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.tune_rounded, color: _ink2),
@@ -334,6 +336,40 @@ class _Verdict extends StatelessWidget {
             color: live ? _green : _idle, shape: BoxShape.circle)),
         const SizedBox(width: 6),
         Text(load, style: const TextStyle(color: _ink2, fontSize: 12.5, fontWeight: FontWeight.w500)),
+      ]),
+    );
+  }
+}
+
+/// FRER recovery-time readout. FRER replicates on both paths continuously, so a
+/// path loss is covered with ZERO switchover — unlike RSTP/rerouting (tens of ms
+/// to seconds). Shown with units, and it turns into the headline "0 ms" the moment
+/// a path is actually down but the stream still holds.
+class _ReconfigStat extends StatelessWidget {
+  const _ReconfigStat({required this.active, required this.protected});
+  final bool active, protected;
+  @override
+  Widget build(BuildContext context) {
+    final covering = active && protected; // a path is down yet the video holds
+    final col = protected ? _green : _red;
+    final ms = protected ? '0 ms' : '— ';
+    final tag = !protected ? 'link lost' : (covering ? 'seamless' : 'FRER armed');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: covering ? col.withValues(alpha: 0.12) : Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: covering
+            ? null
+            : const [BoxShadow(color: Color(0x14000000), blurRadius: 14, offset: Offset(0, 5))],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.timer_rounded, color: col, size: 17),
+        const SizedBox(width: 7),
+        Text('reconfig $ms',
+            style: TextStyle(color: col, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+        const SizedBox(width: 6),
+        Text(tag, style: const TextStyle(color: _ink2, fontSize: 11.5, fontWeight: FontWeight.w500)),
       ]),
     );
   }

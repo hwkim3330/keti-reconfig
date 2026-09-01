@@ -45,11 +45,13 @@ STATUS_UUID = "4b455449-5447-454e-0000-000000000002"
 D10_GEN = "192.168.100.1"     # A — generation (video source)
 D10_MID = "192.168.100.2"     # B — detour + flood
 D10_REC = "192.168.100.4"     # C rear — recovery (receiver)
-VIDEO_EGRESS = "Gi 1/1"       # C port 1 → the receiver Pi
-VIDEO_QUEUE = 6               # CoS the video is mapped to
+VIDEO_EGRESS = "Gi 1/2"       # C egress carrying the FRER-recovered video (CBS lives here)
+VIDEO_QUEUE = 6               # CoS/queue the video (PCP 6) is mapped to; flood is PCP 0 -> q0
 # App cut:1 = direct route (A→C, drop A's Gi1/6); cut:2 = detour (A→B, drop A's Gi1/4).
 RING_PORT = {"1": (D10_GEN, "Gi 1/6"), "2": (D10_GEN, "Gi 1/4")}
-_cbs_mbps = 250               # remembered CBS reservation, applied on cbs:on
+_cbs_mbps = 250               # remembered CBS reservation (Mbps), applied on cbs:on
+_cbs_port = VIDEO_EGRESS      # remembered CBS egress port, changeable from the tablet
+_cbs_queue = VIDEO_QUEUE      # remembered CBS queue/TC, changeable from the tablet
 
 def _local_name() -> str:
     # Distinguish the two Pis for the tablet: name by role (/etc/pi-trafgen/view).
@@ -90,7 +92,7 @@ def _d10_get(host: str, method: str, params: list):
 
 
 def handle_command(text: str) -> None:
-    global _cbs_mbps
+    global _cbs_mbps, _cbs_port, _cbs_queue
     text = text.strip()
     try:
         # -- traffic generator (this node's local API) ----------------------
@@ -103,15 +105,29 @@ def handle_command(text: str) -> None:
         elif text.startswith("user:"):
             _post(f"/api/userpresets/{urllib.parse.quote(text[5:])}/load")
 
-        # -- CBS (802.1Qav) on the receiver egress queue --------------------
+        # -- CBS (802.1Qav) credit-based shaper on an egress queue ----------
+        # cbs:on / cbs:off          -> apply/clear on the remembered port+queue+rate
+        # cbs:mbps:<N>              -> set the reservation (Mbps), applied on next cbs:on
+        # cbs:cfg:<port>:<q>:<N>:<on|off>  -> tablet picks port(index, e.g. 2 = Gi 1/2),
+        #                             queue/TC, rate(Mbps) and state, so CBS can be tried
+        #                             at any point of contention, not just one hardcoded spot.
         elif text == "cbs:on":
-            _d10(D10_REC, "qos.config.interface.queueShaper.set", [VIDEO_EGRESS, VIDEO_QUEUE,
+            _d10(D10_REC, "qos.config.interface.queueShaper.set", [_cbs_port, _cbs_queue,
                  {"Enable": True, "Credit": True, "Cir": _cbs_mbps * 1000, "RateType": "line", "Excess": False}])
         elif text == "cbs:off":
-            _d10(D10_REC, "qos.config.interface.queueShaper.set", [VIDEO_EGRESS, VIDEO_QUEUE,
+            _d10(D10_REC, "qos.config.interface.queueShaper.set", [_cbs_port, _cbs_queue,
                  {"Enable": False, "Credit": False, "Cir": 500, "RateType": "line", "Excess": False}])
         elif text.startswith("cbs:mbps:"):
             _cbs_mbps = int(text.rsplit(":", 1)[1])   # applied on the next cbs:on
+        elif text.startswith("cbs:cfg:"):
+            _, _, port, q, mbps, state = text.split(":")
+            _cbs_port = f"Gi 1/{port}"
+            _cbs_queue = int(q)
+            _cbs_mbps = int(mbps)
+            on = state == "on"
+            _d10(D10_REC, "qos.config.interface.queueShaper.set", [_cbs_port, _cbs_queue,
+                 {"Enable": on, "Credit": on, "Cir": (_cbs_mbps * 1000) if on else 500,
+                  "RateType": "line", "Excess": False}])
 
         # -- FRER (802.1CB) instance 1 on both switches ---------------------
         elif text in ("frer:on", "frer:off"):
