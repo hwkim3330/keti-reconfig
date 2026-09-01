@@ -241,9 +241,12 @@ const String modelViewerScript = '''
                 // BaseColor 시도 (pbr이 있으면)
                 try {
                     if (entry.pbr?.setBaseColorFactor) {
-                        const colorHex = redHex || entry.baseHex;
-                        entry.pbr.setBaseColorFactor(colorHex);
-                        console.log('[Alert] setBaseColorFactor:', colorHex);
+                        // BUGFIX: setBaseColorFactor 는 [r,g,b,a] 배열을 받는다 (hex 문자열 X).
+                        const alpha = entry.base[3];
+                        const factor = redHex
+                            ? [0.937, 0.267, 0.267, alpha]   // #EF4444
+                            : [...entry.base];
+                        entry.pbr.setBaseColorFactor(factor);
                     }
                 } catch (e) {
                     console.error('[Alert] BaseColor error:', e);
@@ -436,7 +439,11 @@ const String modelViewerScript = '''
         window.toggleMaterials = () => runPartsAnimation(!isShowingParts);
         window.setVehicleShellOpacity = (value) => {
             const opacity = CLAMP(Number(value), 0, 1);
-            applyAlpha([...trackedCarpaint, ...trackedTranslucentParts], opacity);
+            const entries = [...trackedCarpaint, ...trackedTranslucentParts];
+            // BUGFIX: opaque 재질은 baseColor alpha를 무시한다. 투명하게 만들려면
+            // alphaMode를 BLEND로 바꿔야 하고, 1.0으로 되돌릴 때만 OPAQUE로 복원.
+            setAlphaModeForEntries(entries, opacity < 0.999 ? 'BLEND' : 'OPAQUE');
+            applyAlpha(entries, opacity);
             isShowingParts = opacity > 0;
         };
 
