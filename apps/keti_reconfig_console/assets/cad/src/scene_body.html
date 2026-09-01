@@ -1,0 +1,137 @@
+<style>
+  :root{
+    --bg:#0A0D13; --bg2:#0E121B; --panel:#121826; --panel2:#0F1420;
+    --hair:#1E2636; --hair2:#2A3446;
+    --ink:#EAF0FA; --ink2:#8590A6; --ink3:#556074;
+    --accent:#38D6F0;            /* electric cyan — the "active/scan" hue */
+    --lidar:#38D6F0; --radar:#F5A623; --camera:#3DDC84; --acu:#9B8CFF; --gnss:#FF6B8A;
+    --zone:#5B8CFF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;overflow:hidden}
+  #app{position:fixed;inset:0}
+  canvas{display:block;position:absolute;inset:0}
+  .mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+
+  /* top bar */
+  #topbar{position:absolute;top:0;left:0;right:0;height:58px;display:flex;align-items:center;gap:16px;
+    padding:0 20px;z-index:20;
+    background:linear-gradient(180deg,rgba(10,13,19,.92),rgba(10,13,19,0));pointer-events:none}
+  #topbar > *{pointer-events:auto}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .logo{width:9px;height:9px;border-radius:2px;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+  .brand b{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .brand span{font-size:12px;color:var(--ink2)}
+  .divider{width:1px;height:20px;background:var(--hair2)}
+  .views{display:flex;gap:4px;background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:3px}
+  .views button{background:none;border:0;color:var(--ink2);font:inherit;font-size:12px;font-weight:600;
+    padding:6px 12px;border-radius:7px;cursor:pointer;transition:.15s}
+  .views button.on{background:var(--hair2);color:var(--ink)}
+  .views button:hover{color:var(--ink)}
+  #spec{margin-left:auto;display:flex;gap:22px;align-items:center}
+  .kpi{text-align:right}
+  .kpi .v{font-size:17px;font-weight:750;letter-spacing:-.02em}
+  .kpi .l{font-size:10px;color:var(--ink2);letter-spacing:.04em}
+  .kpi .v.cyan{color:var(--accent)}
+
+  /* left sensor panel */
+  #panel{position:absolute;top:74px;left:20px;width:270px;z-index:15;
+    background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--hair);
+    border-radius:16px;padding:16px 15px;backdrop-filter:blur(8px);box-shadow:0 20px 50px rgba(0,0,0,.45)}
+  #panel h3{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);margin-bottom:12px;font-weight:700}
+  .srow{display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.14s}
+  .srow:hover{background:var(--hair)}
+  .srow.off{opacity:.4}
+  .srow .dot{width:10px;height:10px;border-radius:3px;flex:none;box-shadow:0 0 8px currentColor}
+  .srow .nm{font-size:13px;font-weight:600;flex:1}
+  .srow .ct{font-size:12px;color:var(--ink2);font-weight:600}
+  .srow .ct .u{font-size:10px;color:var(--ink3);margin-left:2px}
+  #panel .sep{height:1px;background:var(--hair);margin:11px 2px}
+  .toggle-hint{font-size:10.5px;color:var(--ink3);margin-top:4px;padding:0 8px}
+
+  /* shell opacity */
+  #shellctl{margin-top:14px;padding:0 8px}
+  #shellctl label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2);font-weight:600;margin-bottom:8px}
+  #shellctl label b{color:var(--ink)}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:3px;
+    background:var(--hair2);outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 10px var(--accent);cursor:pointer}
+
+  /* selected sensor card */
+  #card{position:absolute;bottom:22px;left:50%;transform:translateX(-50%) translateY(140%);
+    z-index:16;min-width:340px;background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--hair2);border-radius:16px;padding:15px 18px;
+    box-shadow:0 24px 60px rgba(0,0,0,.55);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  #card.show{transform:translateX(-50%) translateY(0)}
+  #card .top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  #card .ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none}
+  #card .ic svg{width:19px;height:19px}
+  #card .tt{font-size:16px;font-weight:750;letter-spacing:-.01em}
+  #card .sub{font-size:11.5px;color:var(--ink2)}
+  #card .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  #card .m{background:var(--panel2);border:1px solid var(--hair);border-radius:10px;padding:8px 11px}
+  #card .m .l{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:700}
+  #card .m .v{font-size:15px;font-weight:700;margin-top:3px}
+
+  #hint{position:absolute;bottom:20px;left:20px;z-index:14;font-size:11px;color:var(--ink3)}
+  #hint b{color:var(--ink2)}
+  .badge{position:absolute;z-index:12;transform:translate(-50%,-50%);pointer-events:none;
+    font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--ink);
+    background:rgba(14,18,27,.82);border:1px solid var(--hair2);border-radius:6px;padding:2px 7px;
+    white-space:nowrap;backdrop-filter:blur(4px);opacity:0;transition:opacity .2s}
+  .badge.on{opacity:1}
+  .badge i{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:5px;vertical-align:middle;box-shadow:0 0 6px currentColor}
+
+  /* embedded in the Flutter console: Flutter draws the header / rails / shell slider on top,
+     so the scene shows only the 3D + labels + the tapped-sensor card (moved clear of the panels). */
+  body.embed #topbar, body.embed #panel, body.embed #hint{display:none}
+  body.embed #card{top:64px;bottom:auto;transform:translateX(-50%) translateY(-150%)}
+  body.embed #card.show{transform:translateX(-50%) translateY(0)}
+</style>
+
+<div id="app">
+  <div id="topbar">
+    <div class="brand"><span class="logo"></span><b>KETI Reconfig</b><span>&middot; Vehicle Sensor Architecture</span></div>
+    <div class="divider"></div>
+    <div class="views">
+      <button data-v="iso" class="on">Iso</button>
+      <button data-v="top">Top</button>
+      <button data-v="side">Side</button>
+      <button data-v="front">Front</button>
+    </div>
+    <div id="spec">
+      <div class="kpi"><div class="v cyan mono" id="k-sensors">11</div><div class="l">SENSORS</div></div>
+      <div class="kpi"><div class="v mono">3</div><div class="l">TSN ZONES</div></div>
+      <div class="kpi"><div class="v mono" id="k-bw">2.4<small style="font-size:11px"> Gb/s</small></div><div class="l">SENSOR BW</div></div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <h3>Sensor Suite</h3>
+    <div id="slist"></div>
+    <div class="sep"></div>
+    <div id="shellctl">
+      <label>ACU case <b><span id="opv">100</span>%</b></label>
+      <input type="range" id="opacity" min="0" max="100" value="100">
+    </div>
+    <div class="toggle-hint">Tap a row to toggle &middot; tap a part to inspect</div>
+  </div>
+
+  <div id="card">
+    <div class="top">
+      <div class="ic" id="c-ic"></div>
+      <div><div class="tt" id="c-tt"></div><div class="sub" id="c-sub"></div></div>
+    </div>
+    <div class="grid">
+      <div class="m"><div class="l">Range</div><div class="v mono" id="c-range"></div></div>
+      <div class="m"><div class="l">Data rate</div><div class="v mono" id="c-rate"></div></div>
+      <div class="m"><div class="l">TSN zone</div><div class="v" id="c-zone"></div></div>
+    </div>
+  </div>
+
+  <div id="hint"><b>drag</b> orbit &middot; <b>scroll</b> zoom &middot; <b>tap</b> a sensor</div>
+</div>
+<script>/*__SCENE__*/</script>

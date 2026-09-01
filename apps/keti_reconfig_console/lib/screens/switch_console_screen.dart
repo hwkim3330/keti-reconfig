@@ -2,10 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/constants.dart';
-import '../core/js_scripts.dart';
 import '../providers/keti_link_provider.dart';
 import '../providers/viewer_service_provider.dart';
 import '../services/keti_link_service.dart';
@@ -33,6 +32,11 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
   /// Built once and reused. The freshness tick rebuilds this screen every second, and letting
   /// that rebuild the viewer made the model visibly drift.
   Widget? _viewer;
+
+  /// The Three.js CAD scene runs in a WebView -- a self-contained HTML asset with the geometry
+  /// and the window.* control surface the ViewerService drives. It replaced model-viewer's 4 MB
+  /// glTF, which decoded slowly on the tablet; a procedural scene starts instantly and stays fluid.
+  WebViewController? _web;
 
   /// The shell is held mostly transparent so the boards inside stay visible. The demo is about
   /// what is wired inside the vehicle, and an opaque body hides exactly that.
@@ -129,6 +133,17 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+
+    // The scene's dark ground; the light Flutter panels sit over it. Built here rather than in
+    // build() so the WebView is created exactly once and survives the per-second rebuild.
+    _web = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF0A0D13))
+      ..setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => _waitForJsAndInitialize()),
+      )
+      ..loadFlutterAsset('assets/cad/vehicle_cad.html');
+    ref.read(viewerServiceProvider).setController(_web!);
   }
 
   @override
@@ -248,27 +263,8 @@ class _SwitchConsoleScreenState extends ConsumerState<SwitchConsoleScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const ColoredBox(color: Color(0xFFF2F4F7)),
-          _viewer ??= ModelViewer(
-            backgroundColor: const Color(0xFFF2F4F7),
-            id: 'car',
-            src: 'lib/assets/roii_reconfig_recon.glb',
-            alt: 'KETI reconfigurable vehicle',
-            disablePan: true,
-            disableTap: true,
-            cameraControls: true,
-            autoRotate: false,
-            // model-viewer swings a hand cursor across the model to invite a drag. On a fixed
-            // console it just looks like the vehicle is drifting.
-            interactionPrompt: InteractionPrompt.none,
-            cameraOrbit: '45deg 68deg 105%',
-            cameraTarget: 'auto 8m auto',
-            relatedJs: modelViewerScript,
-            onWebViewCreated: (controller) {
-              ref.read(viewerServiceProvider).setController(controller);
-              _waitForJsAndInitialize();
-            },
-          ),
+          const ColoredBox(color: Color(0xFF0A0D13)),
+          _viewer ??= WebViewWidget(controller: _web!),
           Positioned(
             left: 14,
             right: 14,

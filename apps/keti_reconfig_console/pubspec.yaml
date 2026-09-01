@@ -75,6 +75,7 @@ flutter:
     - lib/assets/roii_reconfig.glb
     - lib/assets/roii_reconfig_recon.glb
     - lib/assets/keti_logo.png
+    - assets/cad/vehicle_cad.html
 
   # To add assets to your application, add an assets section, like this:
   # assets:
