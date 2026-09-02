@@ -37,8 +37,14 @@ class Sourced<T> {
 enum NodeKind { lidar, camera, acu, tcu, display, tsn }
 
 /// A box on the vehicle. [pos] is a plan-view coordinate: x -1 (left) .. +1 (right),
-/// y 0 (front bumper) .. 1 (rear bumper). It is a layout, not a measurement -- the sheets
-/// give mounting photos, not vehicle coordinates.
+/// y 0 (front bumper) .. 1 (rear bumper).
+///
+/// Where the reconfig model had the same device, these are its numbers, read out of that file's
+/// own device nodes and normalised against its body: the bumper LiDARs at y 0.036 and 0.961, the
+/// flank pair at the front corners rather than mid-roof, the zonal controllers at 0.148 and 0.598
+/// where the two front switches and the centre switch now sit. The sheets give mounting photos
+/// and no vehicle coordinates, so a layout somebody already fitted to this body beats one guessed
+/// against a drawing.
 class Node {
   final String id;
   final String name;
@@ -72,7 +78,7 @@ const lidarNodes = <Node>[
     ko: 'FalconK 전방',
     kind: NodeKind.lidar,
     model: 'Falcon K1',
-    pos: Offset(0, 0.30),
+    pos: Offset(0, 0.25),
     mount: 'Roof, forward. Sheet 3 shows the harness dropping through the roof panel at the front unit only.',
     refImage: 'assets/ref/fk_mount.png',
     connector: 'CN1 · TE 2387380',
@@ -84,7 +90,7 @@ const lidarNodes = <Node>[
     ko: 'FalconK 후방',
     kind: NodeKind.lidar,
     model: 'Falcon K1',
-    pos: Offset(0, 0.72),
+    pos: Offset(0, 0.70),
     mount: 'Roof, aft. Same bracket as the front unit; sheet 3 shows no cable break-out at the rear view.',
     refImage: 'assets/ref/fk_mount.png',
     connector: 'CN1 · TE 2387380',
@@ -96,7 +102,7 @@ const lidarNodes = <Node>[
     ko: '허밍버드 전방',
     kind: NodeKind.lidar,
     model: 'Hummingbird',
-    pos: Offset(0, 0.04),
+    pos: Offset(0.01, 0.036),
     mount: 'Front fascia, on a green bracket plate bolted to the bumper beam.',
     refImage: 'assets/ref/hb_mount.png',
     connector: 'CN1 · AMP HYBRID WP LIDAR CODE A · TE 2387380-1',
@@ -108,7 +114,7 @@ const lidarNodes = <Node>[
     ko: '허밍버드 후방',
     kind: NodeKind.lidar,
     model: 'Hummingbird',
-    pos: Offset(0, 0.96),
+    pos: Offset(0.01, 0.961),
     mount: 'Rear fascia, bracket plate above the rear lamps.',
     refImage: 'assets/ref/hb_mount.png',
     connector: 'CN1 · AMP HYBRID WP LIDAR CODE A · TE 2387380-1',
@@ -120,7 +126,7 @@ const lidarNodes = <Node>[
     ko: '측방 LiDAR 좌',
     kind: NodeKind.lidar,
     model: 'Hesai (spinning)',
-    pos: Offset(-0.93, 0.42),
+    pos: Offset(-0.913, 0.093),
     mount: 'Roof edge, left. Sheet 4 shows the unit on a mast pigtail, not a bulkhead connector.',
     refImage: 'assets/ref/side_lidar.png',
     connector: 'Coding-A P/N 1897726-2 / 1897725-2 + HSD plug',
@@ -131,7 +137,7 @@ const lidarNodes = <Node>[
     ko: '측방 LiDAR 우',
     kind: NodeKind.lidar,
     model: 'Hesai (spinning)',
-    pos: Offset(0.93, 0.42),
+    pos: Offset(0.911, 0.093),
     mount: 'Roof edge, right. Mirror of the LH unit.',
     refImage: 'assets/ref/side_lidar.png',
     connector: 'Coding-A P/N 1897726-2 / 1897725-2 + HSD plug',
@@ -145,7 +151,7 @@ const ecuNodes = <Node>[
     ko: 'ACU 아이티',
     kind: NodeKind.acu,
     model: 'a2z ACU · TOTAL I/O, USB-C, LAN 1-3',
-    pos: Offset(0.42, 0.78),
+    pos: Offset(0.30, 0.798),
     mount: 'Rear compartment. Red-anodised finned case; three automotive-Ethernet connectors on the board edge.',
     refImage: 'assets/ref/acu_it_case.png',
   ),
@@ -155,7 +161,7 @@ const ecuNodes = <Node>[
     ko: 'ACU 엔오',
     kind: NodeKind.acu,
     model: 'a2z ACU · CAM 1-5, LAN, TOTAL I/O, 2× USB-C',
-    pos: Offset(-0.42, 0.78),
+    pos: Offset(-0.30, 0.798),
     mount: 'Rear compartment, relocated on the later sheet revision ("위치변경 (ACU NO)").',
     refImage: 'assets/ref/acu_no_case.png',
   ),
@@ -164,7 +170,7 @@ const ecuNodes = <Node>[
     name: 'TCU_M',
     kind: NodeKind.tcu,
     model: 'Telematics, main',
-    pos: Offset(0.42, 0.92),
+    pos: Offset(0.642, 0.598),
     mount: 'Reached from ACU_IT port 2-2 and from ACU_NO on two 1G links (Orin A / Orin B).',
   ),
   Node(
@@ -172,7 +178,7 @@ const ecuNodes = <Node>[
     name: 'TCU_S',
     kind: NodeKind.tcu,
     model: 'Telematics, sub',
-    pos: Offset(-0.42, 0.92),
+    pos: Offset(-0.642, 0.598),
     mount: 'ACU_IT port 1-4.',
   ),
   Node(
@@ -188,16 +194,16 @@ const ecuNodes = <Node>[
 /// The ten camera feeds land on five dual FAKRA jacks, two per jack. Positions are a layout;
 /// the sheet places them by name only.
 const cameraNodes = <Node>[
-  Node(id: 'cam_tf_110', name: 'TF Camera 110°', kind: NodeKind.camera, model: 'TF · 110°', pos: Offset(-0.30, 0.20), mount: 'Windshield, forward-facing cluster.'),
-  Node(id: 'cam_tf_60', name: 'TF Camera 60°', kind: NodeKind.camera, model: 'TF · 60°', pos: Offset(0.0, 0.17), mount: 'Windshield, forward-facing cluster.'),
-  Node(id: 'cam_tf_30', name: 'TF Camera 30°', kind: NodeKind.camera, model: 'TF · 30°', pos: Offset(0.30, 0.20), mount: 'Windshield, forward-facing cluster.'),
-  Node(id: 'cam_roof_frt', name: 'FRT Inside Roof', kind: NodeKind.camera, model: 'Inside roof · 110°', pos: Offset(-0.22, 0.40), mount: 'Cabin ceiling, front.'),
-  Node(id: 'cam_roof_rr', name: 'RR Inside Roof', kind: NodeKind.camera, model: 'Inside roof · 110°', pos: Offset(0.22, 0.60), mount: 'Cabin ceiling, rear.'),
-  Node(id: 'cam_rear', name: 'Rear Camera', kind: NodeKind.camera, model: 'Rear · 60°', pos: Offset(0.0, 0.99), mount: 'Rear fascia.'),
-  Node(id: 'cam_lh_frt', name: 'Side LH FRT', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(-0.86, 0.30), mount: 'Left flank, forward.'),
-  Node(id: 'cam_lh_rr', name: 'Side LH RR', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(-0.86, 0.66), mount: 'Left flank, aft.'),
-  Node(id: 'cam_rh_frt', name: 'Side RH FRT', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(0.86, 0.30), mount: 'Right flank, forward.'),
-  Node(id: 'cam_rh_rr', name: 'Side RH RR', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(0.86, 0.66), mount: 'Right flank, aft.'),
+  Node(id: 'cam_tf_110', name: 'TF Camera 110°', kind: NodeKind.camera, model: 'TF · 110°', pos: Offset(-0.06, 0.036), mount: 'Windshield, forward-facing cluster.'),
+  Node(id: 'cam_tf_60', name: 'TF Camera 60°', kind: NodeKind.camera, model: 'TF · 60°', pos: Offset(0.01, 0.036), mount: 'Windshield, forward-facing cluster.'),
+  Node(id: 'cam_tf_30', name: 'TF Camera 30°', kind: NodeKind.camera, model: 'TF · 30°', pos: Offset(0.075, 0.036), mount: 'Windshield, forward-facing cluster.'),
+  Node(id: 'cam_roof_frt', name: 'FRT Inside Roof', kind: NodeKind.camera, model: 'Inside roof · 110°', pos: Offset(-0.20, 0.30), mount: 'Cabin ceiling, front.'),
+  Node(id: 'cam_roof_rr', name: 'RR Inside Roof', kind: NodeKind.camera, model: 'Inside roof · 110°', pos: Offset(0.20, 0.60), mount: 'Cabin ceiling, rear.'),
+  Node(id: 'cam_rear', name: 'Rear Camera', kind: NodeKind.camera, model: 'Rear · 60°', pos: Offset(0.01, 0.961), mount: 'Rear fascia.'),
+  Node(id: 'cam_lh_frt', name: 'Side LH FRT', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(-0.913, 0.086), mount: 'Left flank, forward.'),
+  Node(id: 'cam_lh_rr', name: 'Side LH RR', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(-0.913, 0.30), mount: 'Left flank, aft.'),
+  Node(id: 'cam_rh_frt', name: 'Side RH FRT', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(0.911, 0.086), mount: 'Right flank, forward.'),
+  Node(id: 'cam_rh_rr', name: 'Side RH RR', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(0.911, 0.30), mount: 'Right flank, aft.'),
 ];
 
 /// The KETI TSN backbone. **Not on the a2z sheets** -- the sheets run every sensor straight into
@@ -212,7 +218,7 @@ const tsnNodes = <Node>[
     ko: '전방 스위치 A',
     kind: NodeKind.tsn,
     model: 'LAN9692 · front, path 1',
-    pos: Offset(0.34, 0.26),
+    pos: Offset(0.30, 0.148),
     mount: 'Front compartment, right. Aggregates the forward sensors and carries path 1 aft.',
   ),
   Node(
@@ -221,7 +227,7 @@ const tsnNodes = <Node>[
     ko: '전방 스위치 B',
     kind: NodeKind.tsn,
     model: 'LAN9692 · front, path 2',
-    pos: Offset(-0.34, 0.26),
+    pos: Offset(-0.30, 0.148),
     mount: 'Front compartment, left. The redundant half of the front pair, carrying path 2 aft.',
   ),
   Node(
@@ -230,7 +236,7 @@ const tsnNodes = <Node>[
     ko: '후방 스위치',
     kind: NodeKind.tsn,
     model: 'LAN9692 · centre',
-    pos: Offset(0.0, 0.55),
+    pos: Offset(0.01, 0.598),
     mount: 'Mid-cabin, just aft of centre. Pulled forward off the rear bulkhead so both paths '
         'run about the same length and the trunk to ACU_IT is the only long run left.',
   ),

@@ -212,16 +212,18 @@ V3 anchorOf(Node n) => V3(
       heightOf(n) * _hgt,
     );
 
+/// Mount heights, 0 at the ground and 1 at the roof. Same provenance as [Node.pos]: where the
+/// reconfig model had the device, these are its numbers.
 double heightOf(Node n) {
-  if (n.id.startsWith('fk_')) return 1.00;
-  if (n.id.startsWith('hb_')) return 0.22;
-  if (n.id == 'lidar_lh' || n.id == 'lidar_rh') return 0.99;
-  if (n.kind == NodeKind.acu || n.kind == NodeKind.tcu || n.kind == NodeKind.tsn) return 0.31;
-  if (n.id == 'display') return 0.58;
-  if (n.id.contains('roof')) return 0.86;
-  if (n.id.startsWith('cam_tf')) return 0.76;
-  if (n.id == 'cam_rear') return 0.30;
-  return 0.58; // flank cameras
+  if (n.id.startsWith('fk_')) return 0.95; // roof units; the reconfig model had none to copy
+  if (n.id.startsWith('hb_')) return 0.234;
+  if (n.id == 'lidar_lh' || n.id == 'lidar_rh') return 0.441;
+  if (n.kind == NodeKind.acu || n.kind == NodeKind.tcu || n.kind == NodeKind.tsn) return 0.165;
+  if (n.id == 'display') return 0.55;
+  if (n.id.contains('roof')) return 0.50;
+  if (n.id.startsWith('cam_tf')) return 0.464;
+  if (n.id == 'cam_rear') return 0.395;
+  return 0.487; // flank cameras
 }
 
 Color kindColour(NodeKind k) => switch (k) {

@@ -28,4 +28,4 @@ flutter:
   assets:
     - assets/ref/
     - assets/keti_logo.png
-    - assets/roii_body_clean.glb
+    - assets/roii_scene.glb

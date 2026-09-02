@@ -16,14 +16,22 @@ class ModelVehicleView extends StatefulWidget {
   final String? selectedNodeId;
   final ValueChanged<String?> onSelect;
 
-  /// 0..1, applied to every material in the glTF.
+  /// 0..1, applied to the shell panels only.
   final double shellOpacity;
+
+  /// Turns the baked wheel clip on and off.
+  final bool wheelsTurning;
+
+  /// Raises the lamp materials' emissive back to what they were exported with.
+  final bool lightsOn;
 
   const ModelVehicleView({
     super.key,
     required this.selectedNodeId,
     required this.onSelect,
     this.shellOpacity = 0.42,
+    this.wheelsTurning = false,
+    this.lightsOn = false,
   });
 
   @override
@@ -122,6 +130,41 @@ function __applyShell(a) {
 }
 window.setShellOpacity = function (a) { window.__shell = a; __applyShell(a); };
 
+// The wheels turn on a clip baked into the file: model-viewer's scene graph can reach a material
+// but not a node transform, so a glTF animation is the only way to turn a wheel.
+window.__wheels = false;
+window.setWheels = function (on) {
+  window.__wheels = on;
+  const mv = document.querySelector('model-viewer');
+  if (!mv) return;
+  try {
+    if (on) {
+      if (mv.availableAnimations && mv.availableAnimations.length) {
+        mv.animationName = mv.availableAnimations[0];
+      }
+      mv.play({ repetitions: Infinity });
+    } else {
+      mv.pause();
+    }
+  } catch (e) {}
+};
+
+// Lamps ship lit so the exporter keeps their emissiveFactor, and are switched off at load. A
+// material exported with zero emission has no factor left for anything to turn up.
+window.__lights = false;
+window.setLights = function (on) {
+  window.__lights = on;
+  const mv = document.querySelector('model-viewer');
+  if (!mv || !mv.model) return;
+  for (const m of mv.model.materials) {
+    if ((m.name || '').indexOf('lamp') < 0) continue;
+    try {
+      if (!m.__emissive) m.__emissive = Array.from(m.emissiveFactor);
+      m.setEmissiveFactor(on ? m.__emissive : [0, 0, 0]);
+    } catch (e) {}
+  }
+};
+
 // Resolve the normalised hotspot coordinates against the body actually loaded: x is lateral
 // (-1 left .. +1 right), y runs 0 at the front bumper to 1 at the rear, z is height 0..1.
 function __centre(mv) {
@@ -162,6 +205,8 @@ document.addEventListener('DOMContentLoaded', function () {
   if (!mv) return;
   mv.addEventListener('load', function () {
     __applyShell(window.__shell);
+    window.setLights(window.__lights);
+    window.setWheels(window.__wheels);
     __placePins();
     // The bounds settle a frame or two after load on some builds; a second pass is cheap.
     setTimeout(__placePins, 250);
@@ -173,11 +218,20 @@ document.addEventListener('DOMContentLoaded', function () {
   @override
   void didUpdateWidget(ModelVehicleView old) {
     super.didUpdateWidget(old);
-    if (old.shellOpacity != widget.shellOpacity) _push();
+    if (old.shellOpacity != widget.shellOpacity ||
+        old.wheelsTurning != widget.wheelsTurning ||
+        old.lightsOn != widget.lightsOn) {
+      _push();
+    }
   }
 
-  void _push() =>
-      _web?.runJavaScript('window.setShellOpacity(${widget.shellOpacity.toStringAsFixed(3)})');
+  void _push() {
+    final js = _web;
+    if (js == null) return;
+    js.runJavaScript('window.setShellOpacity(${widget.shellOpacity.toStringAsFixed(3)})');
+    js.runJavaScript('window.setWheels(${widget.wheelsTurning})');
+    js.runJavaScript('window.setLights(${widget.lightsOn})');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +240,7 @@ document.addEventListener('DOMContentLoaded', function () {
       key: const ValueKey('acu_lidar_model'),
       backgroundColor: const Color(0xFFF6F8FC),
       id: 'vehicle',
-      src: 'assets/roii_body_clean.glb',
+      src: 'assets/roii_scene.glb',
       alt: 'Shuttle body with the ACU, LiDAR and TSN switch positions pinned on',
       cameraControls: true,
       // Nothing on this view moves on its own. A console that drifts its camera or waves a

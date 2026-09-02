@@ -25,6 +25,8 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
   bool _cameras = true;
   bool _cables = true;
   double _opacity = 0.42;
+  bool _wheels = false;
+  bool _lights = false;
   VehicleViewMode _mode = VehicleViewMode.model;
 
   void _select(String? id) {
@@ -59,6 +61,8 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                             selectedNodeId: selected,
                             onSelect: _select,
                             shellOpacity: _opacity,
+                            wheelsTurning: _wheels,
+                            lightsOn: _lights,
                           ),
                           RepaintBoundary(
                             child: VehicleView(
@@ -93,12 +97,21 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                         children: [
                           _ViewSwitch(mode: _mode, onChanged: (m) => setState(() => _mode = m)),
                           const SizedBox(height: 10),
-                          if (_mode == VehicleViewMode.model)
+                          if (_mode == VehicleViewMode.model) ...[
                             _OpacityCapsule(
                               value: _opacity,
                               onChanged: (v) => setState(() => _opacity = v),
-                            )
-                          else
+                            ),
+                            const SizedBox(height: 10),
+                            _ToggleCapsule(
+                              items: [
+                                (Icons.rotate_right, 'Wheels', _wheels,
+                                    () => setState(() => _wheels = !_wheels)),
+                                (Icons.lightbulb_outline, 'Lights', _lights,
+                                    () => setState(() => _lights = !_lights)),
+                              ],
+                            ),
+                          ] else
                             _LayerCapsule(
                               cameras: _cameras,
                               cables: _cables,
@@ -201,6 +214,52 @@ class _ViewSwitch extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: m == mode ? Colors.white : Tone.muted,
                   ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A row of small on/off pills. Used for anything the model can do that is not a slider.
+class _ToggleCapsule extends StatelessWidget {
+  final List<(IconData, String, bool, VoidCallback)> items;
+
+  const _ToggleCapsule({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Capsule(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (icon, label, on, tap) in items)
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                tap();
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: on ? Tone.accent.withValues(alpha: 0.10) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 15, color: on ? Tone.accent : Tone.faint),
+                    const SizedBox(width: 6),
+                    Text(label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: on ? Tone.accent : Tone.faint,
+                        )),
+                  ],
                 ),
               ),
             ),
