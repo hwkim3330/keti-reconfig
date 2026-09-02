@@ -210,6 +210,54 @@ def add_trunks(payload, lo, hi, scale):
         print(f'  TRUNK{path}: {TRUNK_SEGMENTS} segments')
 
 
+def _rounded_rect(w, d, r, steps=5):
+    """A rounded rectangle in plan, as (x, y) pairs. The Dart side has this in core/geom.dart;
+    Blender cannot import that, and one shape is not worth a shared format."""
+    pts = []
+    hw, hd = w / 2 - r, d / 2 - r
+    for cx, cy, a0 in ((hw, hd, 0.0), (-hw, hd, math.pi / 2),
+                       (-hw, -hd, math.pi), (hw, -hd, -math.pi / 2)):
+        for i in range(steps + 1):
+            a = a0 + i * (math.pi / 2) / steps
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    return pts
+
+
+def add_undertray(lo, hi):
+    """Close the bottom.
+
+    The shell has no underside: from below it is an open void with the wheels hanging in it and
+    the arch strips floating. One plate, facing down, single-sided -- so it costs nothing from
+    above, where the back face is culled, and from below the vehicle has a floor.
+    """
+    size = hi - lo
+    z = lo.z + size.z * 0.045
+    cx, cy = (lo.x + hi.x) / 2, (lo.y + hi.y) / 2
+    profile = _rounded_rect(size.x * 0.92, size.y * 0.95, size.x * 0.26)
+
+    me = bpy.data.meshes.new('UNDERTRAY')
+    bm = bmesh.new()
+    ring = [bm.verts.new((cx + px, cy + py, z)) for px, py in profile]
+    centre = bm.verts.new((cx, cy, z))
+    for i in range(len(ring)):
+        a, b = ring[i], ring[(i + 1) % len(ring)]
+        # Wound so the normal points down; nothing above the vehicle ever sees this.
+        bm.faces.new([centre, b, a])
+    bm.to_mesh(me)
+    bm.free()
+
+    mat = bpy.data.materials.new('undertray')
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes['Principled BSDF']
+    bsdf.inputs['Base Color'].default_value = (0.13, 0.14, 0.16, 1.0)
+    bsdf.inputs['Roughness'].default_value = 0.85
+    mat.use_backface_culling = True
+    me.materials.append(mat)
+    obj = bpy.data.objects.new('UNDERTRAY', me)
+    bpy.context.scene.collection.objects.link(obj)
+    print(f'  UNDERTRAY: {len(me.polygons)} faces at z {z:.3f}')
+
+
 def lamp_faces_check(obj):
     return obj.data.polygons
 
@@ -422,6 +470,7 @@ def main(body_path, devices_path, out_path):
         print(f"  {obj.name}: {len(obj.data.polygons)} faces")
 
     spin_wheels()
+    add_undertray(lo, hi)
     add_trunks(payload, lo, hi, DEVICE_SCALE)
     carve_lamps(lo, hi)
     add_plate(lo, hi, PLATE_TEXT)

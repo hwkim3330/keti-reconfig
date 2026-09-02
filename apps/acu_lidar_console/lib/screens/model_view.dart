@@ -363,6 +363,10 @@ document.addEventListener('DOMContentLoaded', function () {
       disableTap: true,
       cameraOrbit: '40deg 68deg 105%',
       cameraTarget: 'auto auto auto',
+      // No flying underneath. The shell is closed by a single plate, but a package drawing seen
+      // from below is a view of the plate, and one stray drag used to end up there.
+      minCameraOrbit: 'auto 5deg auto',
+      maxCameraOrbit: 'auto 93deg auto',
       innerModelViewerHtml: _hotspotHtml,
       relatedCss: _css,
       relatedJs: _js,
