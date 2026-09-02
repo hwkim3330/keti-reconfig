@@ -1,0 +1,29 @@
+name: acu_lidar_console
+description: "ACU / LiDAR harness console: the 2026 vehicle sensor-to-ACU wiring, port map and pinouts, on the tablet."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^2.5.1
+  model_viewer_plus: ^1.9.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/ref/
+    - assets/keti_logo.png
+    - assets/roii_reconfig.glb
