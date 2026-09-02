@@ -251,7 +251,18 @@ class Trunk {
   /// can cut: the module opens a relay and the switches have to reschedule around it.
   final bool injector;
 
-  const Trunk(this.from, this.to, this.label, {this.path, this.injector = false});
+  /// False where the module is expected but not confirmed on the rig. Drawn as a question, not as
+  /// a fact -- the same rule the sheet readings follow.
+  final bool confirmed;
+
+  const Trunk(
+    this.from,
+    this.to,
+    this.label, {
+    this.path,
+    this.injector = false,
+    this.confirmed = true,
+  });
 }
 
 /// Three links between the three switches, each with an injection module in it, plus the run out
@@ -260,7 +271,8 @@ class Trunk {
 const tsnTrunks = <Trunk>[
   Trunk('tsn_fa', 'tsn_r', 'Path 1 · front A to centre', path: 1, injector: true),
   Trunk('tsn_fb', 'tsn_r', 'Path 2 · front B to centre', path: 2, injector: true),
-  Trunk('tsn_fa', 'tsn_fb', 'Path 3 · front cross-link', path: 3, injector: true),
+  Trunk('tsn_fa', 'tsn_fb', 'Path 3 · front cross-link',
+      path: 3, injector: true, confirmed: false),
   Trunk('tsn_r', 'acu_it', 'Centre switch to ACU_IT'),
 ];
 
@@ -269,7 +281,8 @@ const tsnNote =
     'the a2z sheets. On the sheets every sensor runs straight into an ACU port; here the forward '
     'sensors are aggregated by the front pair and carried on to the centre switch, and every '
     'inter-switch link has an inline injection module the tablet can open. Cutting one is a '
-    'reroute, not a lost sensor -- which is the whole point of the exercise.';
+    'reroute, not a lost sensor -- which is the whole point of the exercise. The module on the '
+    'A-to-B cross-link is not confirmed on the rig, so it is drawn as a question.';
 
 List<Node> get allNodes => [...lidarNodes, ...ecuNodes, ...tsnNodes, ...cameraNodes];
 

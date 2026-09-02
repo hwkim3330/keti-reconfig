@@ -209,7 +209,13 @@ class _Box {
   final NodeKind kind;
   final int column;
 
-  const _Box(this.id, this.title, this.sub, this.kind, this.column);
+  /// Offset from the column position. Used for the three switches: a column of three says
+  /// nothing about which of them the traffic ends at, and a triangle with the centre switch on
+  /// its own apex says it at a glance.
+  final Offset nudge;
+
+  const _Box(this.id, this.title, this.sub, this.kind, this.column,
+      {this.nudge = Offset.zero});
 }
 
 /// A run between two boxes. [port] is the sheet's own label for where it lands.
@@ -230,6 +236,9 @@ class _Run {
   final int? path;
   final bool injector;
 
+  /// False where the module is expected but not confirmed on the rig.
+  final bool confirmed;
+
   const _Run(
     this.from,
     this.to, {
@@ -240,20 +249,23 @@ class _Run {
     this.stateKey,
     this.path,
     this.injector = false,
+    this.confirmed = true,
   });
 }
 
 const _boxes = <_Box>[
   _Box('fk_front', 'Falcon K1 F', 'roof front', NodeKind.lidar, 0),
   _Box('hb_front', 'Hummingbird F', 'front fascia', NodeKind.lidar, 0),
-  _Box('lidar_lh', 'Side LiDAR LH', 'roof edge', NodeKind.lidar, 0),
   _Box('lidar_rh', 'Side LiDAR RH', 'roof edge', NodeKind.lidar, 0),
+  _Box('lidar_lh', 'Side LiDAR LH', 'roof edge', NodeKind.lidar, 0),
   _Box('fk_rear', 'Falcon K1 R', 'roof rear', NodeKind.lidar, 0),
   _Box('hb_rear', 'Hummingbird R', 'rear fascia', NodeKind.lidar, 0),
-  _Box('cameras', '10 cameras', 'CAM 1-5 · straight to the Orin', NodeKind.camera, 0),
-  _Box('tsn_fa', 'TSN-F A', 'front, path 1', NodeKind.tsn, 1),
-  _Box('tsn_fb', 'TSN-F B', 'front, path 2', NodeKind.tsn, 1),
-  _Box('tsn_r', 'TSN-R', 'centre', NodeKind.tsn, 1),
+  _Box('cameras', '10 cameras', 'CAM 1-5 · direct to Orin', NodeKind.camera, 0),
+  // Ordered A, R, B so the column puts the centre switch between the two front ones; the nudges
+  // then pull the pair back and push the centre forward, giving the triangle.
+  _Box('tsn_fa', 'TSN-F A', 'front, path 1', NodeKind.tsn, 1, nudge: Offset(-88, 0)),
+  _Box('tsn_r', 'TSN-R', 'centre · to ACU_IT', NodeKind.tsn, 1, nudge: Offset(88, 0)),
+  _Box('tsn_fb', 'TSN-F B', 'front, path 2', NodeKind.tsn, 1, nudge: Offset(-88, 0)),
   _Box('acu_it', 'ACU_IT', '3 connectors, 10 ports', NodeKind.acu, 2),
   _Box('acu_no', 'ACU_NO', '5 jacks, 4-way LAN', NodeKind.acu, 2),
   _Box('display', 'DISPLAY', 'cabin', NodeKind.display, 3),
@@ -299,12 +311,15 @@ List<_Run> _backboneRuns() => [
           t.from,
           t.to,
           port: t.path == null ? 'trunk' : 'Path ${t.path}',
-          rate: t.injector ? 'injection module' : 'to ACU_IT',
+          rate: t.injector
+              ? (t.confirmed ? 'injection module' : 'module not confirmed')
+              : 'to ACU_IT',
           colour: Tone.tsn,
           dashed: true,
           stateKey: t.path == null ? 'trunk' : 'path${t.path}',
           path: t.path,
           injector: t.injector,
+          confirmed: t.confirmed,
         ),
       const _Run('acu_no', 'acu_it', port: '1-1', rate: '10GB-T1', stateKey: '1-1'),
       const _Run('acu_it', 'display', port: '2-1', rate: '1000B-T1', stateKey: '2-1'),
@@ -398,6 +413,7 @@ class _Diagram extends ConsumerWidget {
                 child: _Injector(
                   path: w.run.path!,
                   cut: rig.isCut(w.run.path!),
+                  confirmed: w.run.confirmed,
                   live: rig.mode == RigMode.simulated,
                   onTap: () {
                     HapticFeedback.mediumImpact();
@@ -429,7 +445,8 @@ class _Diagram extends ConsumerWidget {
       final span = col.length * _cardH + (col.length - 1) * gap;
       var y = (size.height - span) / 2;
       for (final b in col) {
-        rects[b.id] = Rect.fromLTWH(cx - _cardW / 2, y, _cardW, _cardH);
+        rects[b.id] =
+            Rect.fromLTWH(cx - _cardW / 2 + b.nudge.dx, y + b.nudge.dy, _cardW, _cardH);
         y += _cardH + gap;
       }
     }
@@ -470,7 +487,7 @@ class _Diagram extends ConsumerWidget {
 
       // A link between two boxes in the same column leaves and returns on the same side, so its
       // handles both point the same way; the bulge is what carries the injection module.
-      final dx = sameColumn ? 78.0 : (end.dx - start.dx).abs().clamp(40.0, 150.0);
+      final dx = sameColumn ? 52.0 : (end.dx - start.dx).abs().clamp(40.0, 150.0);
       final c1 = Offset(start.dx + (sameColumn ? -dx : (forward ? dx : -dx)), start.dy);
       final c2 = Offset(end.dx + (sameColumn ? -dx : (forward ? -dx : dx)), end.dy);
       final path = Path()
@@ -490,22 +507,26 @@ class _Injector extends StatelessWidget {
   final int path;
   final bool cut;
   final bool live;
+  final bool confirmed;
   final VoidCallback onTap;
 
   const _Injector({
     required this.path,
     required this.cut,
     required this.live,
+    required this.confirmed,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colour = cut ? Tone.bad : Tone.tsn;
+    final colour = cut ? Tone.bad : (confirmed ? Tone.tsn : Tone.warn);
     return Tooltip(
-      message: live
-          ? (cut ? 'Path $path is open. Tap to restore.' : 'Tap to open path $path.')
-          : 'No rig attached — switch to DEMO to cut a path.',
+      message: !confirmed
+          ? 'A module on this link is expected but not confirmed on the rig.'
+          : live
+              ? (cut ? 'Path $path is open. Tap to restore.' : 'Tap to open path $path.')
+              : 'No rig attached — switch to DEMO to cut a path.',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -527,7 +548,7 @@ class _Injector extends StatelessWidget {
                     size: 14, color: colour.withValues(alpha: live ? 1 : 0.55)),
                 const SizedBox(width: 6),
                 Text(
-                  cut ? 'CUT' : 'INJ $path',
+                  cut ? 'CUT' : (confirmed ? 'INJ $path' : 'INJ $path?'),
                   style: Type.monoAt(10.5,
                       weight: FontWeight.w800, colour: colour.withValues(alpha: live ? 1 : 0.55)),
                 ),
