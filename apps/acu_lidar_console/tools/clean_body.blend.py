@@ -192,6 +192,20 @@ def main(src, dst, textures=None):
         tris = sum(len(o.data.polygons) for o in groups[name])
         print(f'  {name:<14} {len(groups[name]):>4} islands  {tris:>6} faces')
 
+    # A wheel is one disc. The fronts arrive as two -- an outer face and an inner one at the same
+    # hub -- and the pair z-fights, which is the speckle across the tyre. Keep the outer.
+    for name in list(groups):
+        if not name.startswith('WHEEL_') or len(groups[name]) < 2:
+            continue
+        def outboard(o):
+            c = o.matrix_world @ (0.125 * sum((Vector(v) for v in o.bound_box), Vector()))
+            return abs(c.x)
+        members = sorted(groups[name], key=outboard, reverse=True)
+        for extra in members[1:]:
+            print(f'    dropped inner disc from {name}: {len(extra.data.polygons)} faces')
+            bpy.data.objects.remove(extra, do_unlink=True)
+        groups[name] = members[:1]
+
     # Join each group into one object, so the app addresses a part by one node name.
     merged = []
     for name, members in groups.items():

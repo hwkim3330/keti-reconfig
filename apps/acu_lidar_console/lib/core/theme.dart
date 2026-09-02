@@ -33,8 +33,12 @@ class Tone {
   // Device taxonomy. Identity only; never used to mean a state.
   static const lidar = Color(0xFF0EA5C4);
   static const camera = Color(0xFF109E6D);
+  static const radar = Color(0xFFE07C1B);
   static const acu = Color(0xFF7A64EC);
-  static const aux = Color(0xFFE07C1B);
+
+  /// Peripherals -- telematics, the display. Neutral on purpose: the saturated colours belong to
+  /// the sensors, which are what anyone is looking for.
+  static const aux = Color(0xFF64748B);
 
   /// The KETI insertion. A hue nothing on the a2z sheets uses, so the backbone never reads as
   /// part of the document it was added to.

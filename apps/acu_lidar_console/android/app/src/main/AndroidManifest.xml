@@ -14,7 +14,7 @@
     <!-- Haptic confirmation when a port or sensor is selected. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <application
-        android:label="ACU LiDAR"
+        android:label="KETI TSN"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"

@@ -19,6 +19,7 @@ const _hummingbirdSize = V3(0.12, 0.10, 0.095);
 const _falconSize = V3(0.14, 0.21, 0.068);
 const _hesaiSize = V3(0.103, 0.103, 0.075);
 const _cameraSize = V3(0.042, 0.048, 0.034);
+const _radarSize = V3(0.088, 0.026, 0.062);
 const _switchSize = V3(0.165, 0.120, 0.042);
 
 /// Devices are drawn oversize. At true scale an ACU is 6% of the vehicle's length and lands on
@@ -49,6 +50,9 @@ class _Palette {
 
   static const switchCase = Color(0xFF20262F);
   static const switchBand = Color(0xFFBE3F97);
+
+  static const radarBody = Color(0xFF3A414C);
+  static const radome = Color(0xFFCF8434);
 
   static const camBody = Color(0xFF2B323D);
   static const panel = Color(0xFFCBD2DC);
@@ -253,6 +257,20 @@ Mesh _hesai() {
   return m;
 }
 
+/// A radar: a flat slab with a radome standing slightly proud of it, and a bracket behind. Not a
+/// manufacturer drawing -- the sheets have no radar in them at all -- but the shape is what tells
+/// a radar from a camera at a glance, which is the job.
+Mesh _radar() {
+  final m = Mesh();
+  final w = _radarSize.x, d = _radarSize.y, h = _radarSize.z;
+  m.box(V3(0, 0, h / 2), V3(w / 2, d / 2, h / 2), _Palette.radarBody);
+  m.box(V3(0, -d / 2 - 0.003, h / 2), V3(w * 0.42, 0.003, h * 0.40), _Palette.radome,
+      shading: 0.55, outline: false);
+  m.box(V3(0, d / 2 + 0.006, h / 2), V3(w * 0.20, 0.006, h * 0.22), _Palette.aluDark,
+      outline: false);
+  return m;
+}
+
 /// A camera: a small body with a lens barrel out of the front face.
 Mesh _camera() {
   final m = Mesh();
@@ -329,6 +347,8 @@ Mesh meshFor(Node n) {
         return _hesai();
       case NodeKind.acu:
         return _acuCase(it: n.id == 'acu_it');
+      case NodeKind.radar:
+        return _radar();
       case NodeKind.camera:
         return _camera();
       case NodeKind.display:
@@ -349,6 +369,7 @@ double headingFor(Node n) {
   if (n.id == 'tsn_fa' || n.id == 'tsn_fb') return math.pi;
   if (n.id == 'tsn_r') return 0;
   if (n.id.endsWith('_rear') || n.id == 'cam_rear') return math.pi;
+  if (n.id.endsWith('_rl') || n.id.endsWith('_rr')) return math.pi; // rear corner radars
   if (n.id.contains('_lh') || n.id == 'lidar_lh') return math.pi / 2;
   if (n.id.contains('_rh') || n.id == 'lidar_rh') return -math.pi / 2;
   return 0; // forward

@@ -24,12 +24,13 @@ class TopologyScreen extends ConsumerStatefulWidget {
 class _TopologyScreenState extends ConsumerState<TopologyScreen> {
   bool _cameras = true;
   bool _cables = true;
-  double _opacity = 0.42;
+  double _opacity = 0.34;
   bool _wheels = false;
   bool _lights = false;
   double _orbit = 40;
   double _polar = 68;
   bool _flow = true;
+  bool _labels = true;
   VehicleViewMode _mode = VehicleViewMode.model;
 
   void _select(String? id) {
@@ -69,6 +70,7 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                             orbitDeg: _orbit,
                             polarDeg: _polar,
                             dataFlow: _flow,
+                            labelsOn: _labels,
                             trunkStates: {
                               for (final t in rig.trunks)
                                 if (t.path != null)
@@ -123,6 +125,8 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                               items: [
                                 (Icons.bolt_outlined, 'Data', _flow,
                                     () => setState(() => _flow = !_flow)),
+                                (Icons.label_outline, 'Labels', _labels,
+                                    () => setState(() => _labels = !_labels)),
                                 (Icons.rotate_right, 'Wheels', _wheels,
                                     () => setState(() => _wheels = !_wheels)),
                                 (Icons.lightbulb_outline, 'Lights', _lights,
@@ -499,6 +503,7 @@ class _Legend extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           tally(Tone.lidar, 'LiDAR', counts[NodeKind.lidar] ?? 0),
+          tally(Tone.radar, 'radar', counts[NodeKind.radar] ?? 0),
           tally(Tone.camera, 'cameras', counts[NodeKind.camera] ?? 0),
           tally(Tone.acu, 'ACU', counts[NodeKind.acu] ?? 0),
           tally(Tone.tsn, 'TSN', counts[NodeKind.tsn] ?? 0),

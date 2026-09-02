@@ -222,12 +222,15 @@ double heightOf(Node n) {
   if (n.id == 'display') return 0.55;
   if (n.id.contains('roof')) return 0.50;
   if (n.id.startsWith('cam_tf')) return 0.464;
+  if (n.id == 'radar_fc') return 0.303;
+  if (n.kind == NodeKind.radar) return 0.280;
   if (n.id == 'cam_rear') return 0.395;
   return 0.487; // flank cameras
 }
 
 Color kindColour(NodeKind k) => switch (k) {
       NodeKind.lidar => Tone.lidar,
+      NodeKind.radar => Tone.radar,
       NodeKind.camera => Tone.camera,
       NodeKind.acu => Tone.acu,
       NodeKind.tcu => Tone.aux,

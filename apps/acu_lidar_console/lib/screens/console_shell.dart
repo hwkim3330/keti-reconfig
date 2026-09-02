@@ -264,7 +264,7 @@ class _TopBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          const Text('ACU / LiDAR', style: Type.display),
+          const Text('KETI TSN', style: Type.display),
           const SizedBox(width: 10),
           Container(width: 1, height: 20, color: Tone.hairline),
           const SizedBox(width: 10),

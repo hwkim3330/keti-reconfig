@@ -26,6 +26,9 @@ class ModelVehicleView extends StatefulWidget {
   /// Raises the lamp materials' emissive back to what they were exported with.
   final bool lightsOn;
 
+  /// Pins can be hidden outright: on a 1280 px canvas twelve of them are most of the vehicle.
+  final bool labelsOn;
+
   /// Whether the trunk segments chase, and what each path's link is doing. The chase runs in the
   /// page's own animation loop, not from here: twelve JavaScript calls a second into a WebView is
   /// a cost with nothing to show for it.
@@ -48,6 +51,7 @@ class ModelVehicleView extends StatefulWidget {
     this.polarDeg = 68,
     this.dataFlow = false,
     this.trunkStates = const {},
+    this.labelsOn = true,
   });
 
   @override
@@ -68,6 +72,7 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
   /// of overlapping tags, and they are named in the port bar and the inspector instead.
   static const _pinned = <String>[
     'hb_front', 'hb_rear', 'fk_front', 'fk_rear', 'lidar_lh', 'lidar_rh',
+    'radar_fc', 'radar_fl', 'radar_fr', 'radar_rl', 'radar_rr',
     'acu_it', 'acu_no', 'display', 'tsn_fa', 'tsn_fb', 'tsn_r',
   ];
 
@@ -82,11 +87,14 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
       if (n == null) continue;
       final cls = switch (n.kind) {
         NodeKind.lidar => 'lidar',
+        NodeKind.radar => 'radar',
         NodeKind.acu => 'acu',
         NodeKind.tsn => 'tsn',
         _ => 'other',
       };
-      final label = n.kind == NodeKind.lidar ? n.name.replaceAll(' · ', ' ') : n.name;
+      // Short names. Twelve pills reading "Falcon K1 · roof front" cover the vehicle they are
+      // supposed to be pointing at.
+      final label = shortName(id);
       b.write(
         '<button class="hs $cls" slot="hotspot-$id" data-position="0m 0m 0m" '
         'data-normal="0 1 0" data-nx="${n.pos.dx}" data-ny="${n.pos.dy}" '
@@ -98,22 +106,27 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
 
   static const _css = '''
 .hs {
-  display: flex; align-items: center; gap: 6px;
-  background: rgba(255,255,255,0.94);
-  border: 1px solid #DCE2EC;
-  border-radius: 8px;
-  padding: 4px 10px 4px 6px;
-  font: 700 11px/1.2 -apple-system, Roboto, sans-serif;
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.90);
+  border: 1px solid #E1E6EE;
+  border-radius: 7px;
+  padding: 2px 7px 2px 5px;
+  font: 700 9.5px/1.15 -apple-system, Roboto, sans-serif;
   color: #101826;
-  box-shadow: 0 1px 5px rgba(16,24,38,.16);
+  box-shadow: 0 1px 3px rgba(16,24,38,.14);
   white-space: nowrap;
   transform: translate(-50%, -50%);
 }
-.hs i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+/* Labels off: the dot stays, because it is still the only thing marking the position. */
+.nolabels .hs { background: none; border: none; box-shadow: none; padding: 0; }
+.nolabels .hs span { display: none; }
+.hs i { width: 7px; height: 7px; border-radius: 50%; display: block;
+        box-shadow: 0 0 0 1.5px rgba(255,255,255,.85); }
 .hs.lidar i { background: #0EA5C4; }
+.hs.radar i { background: #E07C1B; }
 .hs.acu i { background: #7A64EC; }
 .hs.tsn i { background: #BE3F97; }
-.hs.other i { background: #E07C1B; }
+.hs.other i { background: #64748B; }
 /* Behind the body, not hidden by it: the shell is translucent on purpose. */
 .hs[data-visible="false"] { opacity: 0.6; }
 ''';
@@ -219,6 +232,12 @@ window.setFlow = function (on) {
   window.__flowLoop = requestAnimationFrame(step);
 };
 
+window.__labels = true;
+window.setLabels = function (on) {
+  window.__labels = on;
+  document.documentElement.classList.toggle('nolabels', !on);
+};
+
 // A turntable. Dragging is still there; this is the same view twice.
 window.setOrbit = function (theta, phi) {
   const mv = document.querySelector('model-viewer');
@@ -303,6 +322,7 @@ document.addEventListener('DOMContentLoaded', function () {
         old.orbitDeg != widget.orbitDeg ||
         old.polarDeg != widget.polarDeg ||
         old.dataFlow != widget.dataFlow ||
+        old.labelsOn != widget.labelsOn ||
         !mapEquals(old.trunkStates, widget.trunkStates)) {
       _push();
     }
@@ -320,6 +340,7 @@ document.addEventListener('DOMContentLoaded', function () {
       js.runJavaScript("window.setTrunkState(${e.key}, '${e.value}')");
     }
     js.runJavaScript('window.setFlow(${widget.dataFlow})');
+    js.runJavaScript('window.setLabels(${widget.labelsOn})');
   }
 
   @override
@@ -330,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function () {
       backgroundColor: const Color(0xFFF6F8FC),
       id: 'vehicle',
       src: 'assets/roii_scene.glb',
-      alt: 'Shuttle body with the ACU, LiDAR and TSN switch positions pinned on',
+      alt: 'Shuttle body with the ACU, LiDAR, radar and TSN switch positions pinned on',
       cameraControls: true,
       // Nothing on this view moves on its own. A console that drifts its camera or waves a
       // prompt hand while it is idle reads as a screensaver, and it makes the same photograph

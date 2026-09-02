@@ -21,7 +21,7 @@ class AcuLidarApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ACU / LiDAR Console',
+      title: 'KETI TSN Console',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       home: const ConsoleShell(),

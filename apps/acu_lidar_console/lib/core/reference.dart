@@ -34,7 +34,7 @@ class Sourced<T> {
 // Devices on the vehicle
 // ---------------------------------------------------------------------------
 
-enum NodeKind { lidar, camera, acu, tcu, display, tsn }
+enum NodeKind { lidar, radar, camera, acu, tcu, display, tsn }
 
 /// A box on the vehicle. [pos] is a plan-view coordinate: x -1 (left) .. +1 (right),
 /// y 0 (front bumper) .. 1 (rear bumper).
@@ -206,6 +206,55 @@ const cameraNodes = <Node>[
   Node(id: 'cam_rh_rr', name: 'Side RH RR', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(0.911, 0.30), mount: 'Right flank, aft.'),
 ];
 
+/// The radars. **Not on the a2z sheets either** -- the five sheets cover the ACUs and the four
+/// LiDARs and nothing else. These are the reconfig model's own radar nodes, read out of its scene
+/// graph: front centre on the bumper, and a corner pair at each end. They are on the vehicle, so
+/// leaving them off the drawing would be its own kind of wrong; they carry no ACU port because
+/// nothing in this document set gives them one.
+const radarNodes = <Node>[
+  Node(
+    id: 'radar_fc',
+    name: 'Radar · front centre',
+    ko: '전방 중앙 레이더',
+    kind: NodeKind.radar,
+    model: 'Long range',
+    pos: Offset(0.01, 0.036),
+    mount: 'Front bumper beam, on the centreline, just above the Hummingbird.',
+  ),
+  Node(
+    id: 'radar_fl',
+    name: 'Radar · front left',
+    kind: NodeKind.radar,
+    model: 'Corner',
+    pos: Offset(-0.750, 0.061),
+    mount: 'Front left corner, behind the fascia.',
+  ),
+  Node(
+    id: 'radar_fr',
+    name: 'Radar · front right',
+    kind: NodeKind.radar,
+    model: 'Corner',
+    pos: Offset(0.770, 0.061),
+    mount: 'Front right corner, behind the fascia.',
+  ),
+  Node(
+    id: 'radar_rl',
+    name: 'Radar · rear left',
+    kind: NodeKind.radar,
+    model: 'Corner',
+    pos: Offset(-0.750, 0.948),
+    mount: 'Rear left corner, behind the fascia.',
+  ),
+  Node(
+    id: 'radar_rr',
+    name: 'Radar · rear right',
+    kind: NodeKind.radar,
+    model: 'Corner',
+    pos: Offset(0.770, 0.948),
+    mount: 'Rear right corner, behind the fascia.',
+  ),
+];
+
 /// The KETI TSN backbone. **Not on the a2z sheets** -- the sheets run every sensor straight into
 /// an ACU port. These three switches are what this project inserts into that harness, and they
 /// are drawn in a different colour and listed separately so the two are never read as one
@@ -290,11 +339,23 @@ const tsnNote =
     'reroute, not a lost sensor -- which is the whole point of the exercise. The module on the '
     'A-to-B cross-link is not confirmed on the rig, so it is drawn as a question.';
 
-List<Node> get allNodes => [...lidarNodes, ...ecuNodes, ...tsnNodes, ...cameraNodes];
+List<Node> get allNodes =>
+    [...lidarNodes, ...radarNodes, ...ecuNodes, ...tsnNodes, ...cameraNodes];
 
 /// A name that fits a strip cell. The sheet names are descriptive sentences ("Side LH FRT
 /// Camera (110°)"); ellipsising them cuts off the part that says which one it is.
 String shortName(String id) => switch (id) {
+      'fk_front' => 'Falcon K1 F',
+      'fk_rear' => 'Falcon K1 R',
+      'hb_front' => 'Hummingbird F',
+      'hb_rear' => 'Hummingbird R',
+      'lidar_lh' => 'LiDAR LH',
+      'lidar_rh' => 'LiDAR RH',
+      'radar_fc' => 'Radar FC',
+      'radar_fl' => 'Radar FL',
+      'radar_fr' => 'Radar FR',
+      'radar_rl' => 'Radar RL',
+      'radar_rr' => 'Radar RR',
       'cam_tf_110' => 'TF 110°',
       'cam_tf_60' => 'TF 60°',
       'cam_tf_30' => 'TF 30°',
