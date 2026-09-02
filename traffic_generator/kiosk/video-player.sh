@@ -19,7 +19,11 @@
 # connects - which this kiosk never opens - so there is no port conflict.
 set -u
 
-PORT="${TRAFGEN_VIDEO_PORT:-5000}"
+# The web server (uvicorn) unconditionally binds UDP :5000 for its browser relay,
+# so the native player uses a dedicated port the server never touches. The video
+# port is also reserved (net.ipv4.ip_local_reserved_ports) and rpcbind is disabled
+# on the receiver, so nothing random grabs it before mpv on boot.
+PORT="${TRAFGEN_VIDEO_PORT:-5004}"
 OSD="$(dirname "$(readlink -f "$0")")/video-osd.lua"
 
 # Wayland (labwc/wayfire, the bookworm/trixie default) exports these into the
@@ -76,6 +80,7 @@ while true; do
         --hwdec=auto-safe \
         $VO \
         --fullscreen \
+        --panscan=1.0 \
         --no-osc --no-osd-bar --osd-level=0 \
         --no-input-default-bindings --input-conf=/dev/null \
         --cursor-autohide=always --no-input-cursor \
@@ -88,11 +93,16 @@ while true; do
     cvlc)
       # VLC decodes H.264 on the Pi via the MMAL/V4L2 hardware path.
       # --no-media-library + memory keystore stop VLC touching gnome-keyring
-      # (which otherwise throws an unlock dialog over the kiosk).
-      cvlc --intf dummy --fullscreen --no-video-title-show \
-        --no-osd --avcodec-hw=any --network-caching=200 \
+      # (an unlock dialog would otherwise pop over the kiosk).
+      # NO vlc://quit: with it, a momentary failure to bind :5000 (e.g. the
+      # previous instance still releasing it) makes VLC fall through to quit and
+      # the loop flaps, fighting over the port. Without it VLC binds once and
+      # stays on the live stream. Keep stdin open (dummy intf treats stdin EOF
+      # as "quit") by feeding it from a never-ending tail.
+      tail -f /dev/null 2>/dev/null | cvlc --intf dummy --fullscreen \
+        --no-video-title-show --no-osd --avcodec-hw=any --network-caching=200 \
         --no-media-library --keystore memory --no-plugins-cache \
-        "udp://@:${PORT}" vlc://quit \
+        "udp://@:${PORT}" \
         2>/dev/null
       ;;
   esac
