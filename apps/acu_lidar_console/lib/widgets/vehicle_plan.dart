@@ -228,6 +228,16 @@ Color kindColour(NodeKind k) => switch (k) {
       NodeKind.tsn => Tone.tsn,
     };
 
+/// The colour a *run* is drawn in. A healthy link keeps its family colour: painting every run
+/// green when the rig is up throws away the taxonomy the legend still claims, and leaves a fault
+/// with nothing to stand out against. Only trouble takes the colour away.
+Color runColour(LinkState s, Color family) => switch (s) {
+      LinkState.degraded => Tone.warn,
+      LinkState.down => Tone.bad,
+      LinkState.up || LinkState.unknown => family,
+    };
+
+/// The colour a *state dot* is drawn in, where green for up is the whole point.
 Color linkColour(LinkState s, Color fallback) => switch (s) {
       LinkState.up => Tone.ok,
       LinkState.degraded => Tone.warn,
@@ -436,7 +446,7 @@ class _Painter extends CustomPainter {
       final start = anchorOf(n);
       final state = snapshot.link(n.acuPort!);
       final selected = selectedNodeId == n.id;
-      final colour = linkColour(state, const Color(0xFF93A1B5));
+      final colour = runColour(state, const Color(0xFF93A1B5));
 
       final side = n.pos.dx.abs() < 0.2 ? (n.pos.dy < 0.5 ? -1.0 : 1.0) : n.pos.dx.sign;
       final via = V3(side * _wid * 0.46, (start.y + end.y) / 2, _hgt * 0.34);
@@ -478,7 +488,7 @@ class _Painter extends CustomPainter {
       final key = t.path == null ? 'trunk' : 'path${t.path}';
       final state = snapshot.link(key);
       final selected = selectedNodeId == t.from || selectedNodeId == t.to;
-      final colour = linkColour(state, Tone.tsn.withValues(alpha: 0.75));
+      final colour = runColour(state, Tone.tsn.withValues(alpha: 0.75));
 
       final start = anchorOf(a) + const V3(0, 0, 0.06);
       final end = anchorOf(b) + const V3(0, 0, 0.06);

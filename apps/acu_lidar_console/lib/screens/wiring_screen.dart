@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/reference.dart';
 import '../core/theme.dart';
 import '../providers/rig_provider.dart';
-import '../widgets/vehicle_plan.dart' show kindColour, linkColour;
+import '../widgets/vehicle_plan.dart' show kindColour, runColour;
 
 /// What the whole thing is wired like: every box, every run between them, and the port the run
 /// lands on. The page this replaced drew the connectors themselves in detail, which is the wrong
@@ -263,9 +263,9 @@ const _boxes = <_Box>[
   _Box('cameras', '10 cameras', 'CAM 1-5 · direct to Orin', NodeKind.camera, 0),
   // Ordered A, R, B so the column puts the centre switch between the two front ones; the nudges
   // then pull the pair back and push the centre forward, giving the triangle.
-  _Box('tsn_fa', 'TSN-F A', 'front, path 1', NodeKind.tsn, 1, nudge: Offset(-88, 0)),
-  _Box('tsn_r', 'TSN-R', 'centre · to ACU_IT', NodeKind.tsn, 1, nudge: Offset(88, 0)),
-  _Box('tsn_fb', 'TSN-F B', 'front, path 2', NodeKind.tsn, 1, nudge: Offset(-88, 0)),
+  _Box('tsn_fa', 'TSN-F A', 'front, path 1', NodeKind.tsn, 1, nudge: Offset(-70, 0)),
+  _Box('tsn_r', 'TSN-R', 'centre · to ACU_IT', NodeKind.tsn, 1, nudge: Offset(96, 0)),
+  _Box('tsn_fb', 'TSN-F B', 'front, path 2', NodeKind.tsn, 1, nudge: Offset(-70, 0)),
   _Box('acu_it', 'ACU_IT', '3 connectors, 10 ports', NodeKind.acu, 2),
   _Box('acu_no', 'ACU_NO', '5 jacks, 4-way LAN', NodeKind.acu, 2),
   _Box('display', 'DISPLAY', 'cabin', NodeKind.display, 3),
@@ -406,9 +406,9 @@ class _Diagram extends ConsumerWidget {
             // hand goes: you point at the run you want gone.
             for (final w in wires.where((w) => w.run.injector))
               Positioned(
-                left: w.mid.dx - 46,
+                left: w.mid.dx - 39,
                 top: w.mid.dy - 15,
-                width: 92,
+                width: 78,
                 height: 30,
                 child: _Injector(
                   path: w.run.path!,
@@ -487,7 +487,7 @@ class _Diagram extends ConsumerWidget {
 
       // A link between two boxes in the same column leaves and returns on the same side, so its
       // handles both point the same way; the bulge is what carries the injection module.
-      final dx = sameColumn ? 52.0 : (end.dx - start.dx).abs().clamp(40.0, 150.0);
+      final dx = sameColumn ? 44.0 : (end.dx - start.dx).abs().clamp(40.0, 150.0);
       final c1 = Offset(start.dx + (sameColumn ? -dx : (forward ? dx : -dx)), start.dy);
       final c2 = Offset(end.dx + (sameColumn ? -dx : (forward ? -dx : dx)), end.dy);
       final path = Path()
@@ -661,8 +661,7 @@ class _RunPainter extends CustomPainter {
     for (final w in wires) {
       final r = w.run;
       final state = r.stateKey == null ? LinkState.unknown : snapshot.link(r.stateKey!);
-      final live = state != LinkState.unknown;
-      final colour = live ? linkColour(state, r.colour) : r.colour;
+      final colour = runColour(state, r.colour);
       final lit = selectedId == r.from || selectedId == r.to;
       final alpha = lit ? 1.0 : (selectedId == null ? 0.62 : 0.22);
 

@@ -16,6 +16,9 @@ class InspectorPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final nodeId = ref.watch(selectedNodeProvider);
     final portId = ref.watch(selectedPortProvider);
+    // The wiring diagram collapses the ten camera feeds into one box, so it can select an id
+    // that is not a node. Without this the drawer opened on an empty panel.
+    final cameraGroup = nodeId == 'cameras';
     final node = nodeId == null ? null : nodeById(nodeId);
     final port = portId == null ? null : portById(portId);
     final jack = portId == null
@@ -28,7 +31,7 @@ class InspectorPanel extends ConsumerWidget {
         color: Colors.white,
         border: Border(left: BorderSide(color: Tone.hairline)),
       ),
-      child: node == null && port == null && jack == null
+      child: node == null && port == null && jack == null && !cameraGroup
           ? const _Empty()
           : ListView(
               padding: const EdgeInsets.all(14),
@@ -47,6 +50,7 @@ class InspectorPanel extends ConsumerWidget {
                     ),
                   ],
                 ),
+                if (cameraGroup) const _CameraGroupCard(),
                 if (port != null) _PortCard(port: port),
                 if (jack != null) _JackCard(jack: jack),
                 if (node != null) ...[
@@ -79,6 +83,83 @@ class _Empty extends StatelessWidget {
             'about it — connector, cavity, wire colours, and which reading is sourced.',
             style: TextStyle(fontSize: 12, color: Tone.muted, height: 1.5),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The ten feeds, seen as one thing. They land on the Orin on their own coax and are not part of
+/// the reconfiguration, which is why the wiring diagram draws them as a single box.
+class _CameraGroupCard extends ConsumerWidget {
+  const _CameraGroupCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rig = ref.watch(rigProvider);
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(color: Tone.camera, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              const Text('10 camera feeds', style: Type.title),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const _Row('Lands on', 'ACU_NO · CAM 1-5, two per jack'),
+          const _Row('Path', 'Own coax to the Orin, not through the backbone'),
+          const SizedBox(height: 6),
+          for (final j in acuNoJacks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: InkWell(
+                onTap: () {
+                  ref.read(selectedPortProvider.notifier).state = j.id;
+                  ref.read(selectedNodeProvider.notifier).state = j.feedNodeIds.first;
+                },
+                child: Row(
+                  children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: Color(j.dot),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Tone.hairlineStrong),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 52,
+                      child: Text(j.id, style: Type.monoAt(11, weight: FontWeight.w800)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        j.feedNodeIds.map(shortName).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Type.small,
+                      ),
+                    ),
+                    if (rig.mode == RigMode.simulated)
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: linkColour(rig.snapshot.link(j.id), Tone.hairlineStrong),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
