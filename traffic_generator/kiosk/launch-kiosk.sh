@@ -32,6 +32,15 @@ done
 pkill -f "pi-trafgen-kiosk-profile" 2>/dev/null
 sleep 1
 
+# A previous unclean shutdown (power-cut) can leave the profile's singleton lock
+# behind, and then Chromium refuses to start -- "the profile appears to be in use
+# by another Chromium process on another computer" -- so the panel boots blank.
+# The pkill above has already stopped any genuine user of the profile, so clearing
+# the stale lock is safe and lets the kiosk self-heal instead of needing a reboot.
+rm -f "$HOME/.config/pi-trafgen-kiosk-profile/SingletonLock" \
+      "$HOME/.config/pi-trafgen-kiosk-profile/SingletonCookie" \
+      "$HOME/.config/pi-trafgen-kiosk-profile/SingletonSocket" 2>/dev/null
+
 # Drop any cached HTML/JS/CSS so a UI update is always picked up on boot.
 rm -rf "$HOME/.config/pi-trafgen-kiosk-profile/Default/Cache" \
        "$HOME/.config/pi-trafgen-kiosk-profile/Default/Code Cache" \
