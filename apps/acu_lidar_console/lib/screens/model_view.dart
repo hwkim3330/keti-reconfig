@@ -99,6 +99,14 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
   /// control can go back to fully opaque without reloading the model.
   static const _js = '''
 window.__shell = 0.42;
+// Only the shell fades. The body is split into named parts, each with its own material, so the
+// floor the boxes stand on and the wheels that give it a stance stay solid while the roof, flanks
+// and fascias go to glass. Alpha-blending every material at once made the whole vehicle a ghost,
+// which is a different picture and a less useful one.
+const __SHELL = ['ROOF', 'SIDE_L', 'SIDE_R', 'FASCIA_FRONT', 'FASCIA_REAR', 'TRIM'];
+function __isShell(name) {
+  return __SHELL.some(function (s) { return (name || '').indexOf(s) >= 0; });
+}
 function __applyShell(a) {
   const mv = document.querySelector('model-viewer');
   if (!mv || !mv.model) return;
@@ -106,8 +114,9 @@ function __applyShell(a) {
     try {
       const p = m.pbrMetallicRoughness;
       if (!m.__base) m.__base = Array.from(p.baseColorFactor);
-      p.setBaseColorFactor([m.__base[0], m.__base[1], m.__base[2], a]);
-      m.setAlphaMode(a >= 0.995 ? 'OPAQUE' : 'BLEND');
+      const alpha = __isShell(m.name) ? a : 1;
+      p.setBaseColorFactor([m.__base[0], m.__base[1], m.__base[2], alpha]);
+      m.setAlphaMode(alpha >= 0.995 ? 'OPAQUE' : 'BLEND');
     } catch (e) {}
   }
 }
@@ -177,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function () {
       key: const ValueKey('acu_lidar_model'),
       backgroundColor: const Color(0xFFF6F8FC),
       id: 'vehicle',
-      src: 'assets/roii_body.glb',
+      src: 'assets/roii_body_clean.glb',
       alt: 'Shuttle body with the ACU, LiDAR and TSN switch positions pinned on',
       cameraControls: true,
       // Nothing on this view moves on its own. A console that drifts its camera or waves a

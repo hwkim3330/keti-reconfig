@@ -68,6 +68,32 @@ python3 tools/repack_roii_body.py assets/roii_reconfig.glb assets/roii_body.glb
 # 2.08 MB binary GLB (was 3.68 MB JSON)
 ```
 
+Then `tools/clean_body.blend.py` takes it through Blender:
+
+```
+/snap/bin/blender --background --factory-startup --python tools/clean_body.blend.py -- \
+    assets/roii_body.glb assets/roii_body_clean.glb
+# islands before weld: 606
+#   FASCIA_FRONT 8495 faces · FASCIA_REAR 7166 · SIDE_R 5847 · SIDE_L 5827 · FLOOR 5619
+#   ROOF 2902 · WHEEL_FL 1311 · WHEEL_RL 1094 · WHEEL_RR 922 · WHEEL_FR 804 · TRIM 13
+# scaled x2.0116 -> 1.84 m wide, 4.00 m long, 2.17 m tall
+# 1.19 MB
+```
+
+Three things worth knowing about that script. **Split before welding**: the panels are separate
+only in the unwelded mesh, because the exporter split every vertex at a UV seam and the seams
+follow the panel edges — weld first and roof, floor, both flanks and both fascias collapse into
+one 39,938-face lump. **One material per part**, all pointing at the same two textures, because
+model-viewer's scene graph addresses materials and not nodes, and that is the only way to hold
+the shell translucent while the floor and wheels stay solid. **4.0 m is an assumption** — the
+sheets give no vehicle dimensions — but the origin is now on the ground and centred, so a mount
+height means something.
+
+The textures were an atlas with about 40% waste and an ORM map that is nearly a two-level mask:
+roughness sits at 0.25 ± 0.08 across the whole image, metallic is bimodal at ~0 for the paint and
+glass and ~0.6 for the wheels and trim. So the colour atlas keeps its detail at 1024² and the ORM
+goes to 512². Collapsing metallic to a constant would have made the wheels plastic.
+
 Hotspots are placed from normalised coordinates — the same `pos` and height the native 3D view
 reads out of `reference.dart` — resolved at load time against whatever body is loaded. Hard-coded
 metres had to be re-probed every time the model changed and put every pin in a heap when they
