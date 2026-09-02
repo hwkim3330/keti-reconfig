@@ -11,6 +11,9 @@ import 'model_view.dart';
 /// Which of the three renderings of the same data is on screen.
 enum VehicleViewMode { model, iso, plan }
 
+/// The vehicle page is one hero and nothing else. Controls float over it as small capsules and
+/// the port bar sits under it; the previous version spent a fifth of a 1280 px screen on a column
+/// of cards that were, between them, four switches and a legend.
 class TopologyScreen extends ConsumerStatefulWidget {
   const TopologyScreen({super.key});
 
@@ -21,7 +24,13 @@ class TopologyScreen extends ConsumerStatefulWidget {
 class _TopologyScreenState extends ConsumerState<TopologyScreen> {
   bool _cameras = true;
   bool _cables = true;
-  VehicleViewMode _mode = VehicleViewMode.iso;
+  double _opacity = 0.42;
+  VehicleViewMode _mode = VehicleViewMode.model;
+
+  void _select(String? id) {
+    ref.read(selectedNodeProvider.notifier).state = id;
+    ref.read(selectedPortProvider.notifier).state = id == null ? null : nodeById(id)?.acuPort;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,255 +38,166 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
     final selected = ref.watch(selectedNodeProvider);
 
     return Padding(
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
         children: [
-          SizedBox(
-            width: 206,
-            child: _Side(
-              cameras: _cameras,
-              cables: _cables,
-              mode: _mode,
-              onCameras: (v) => setState(() => _cameras = v),
-              onCables: (v) => setState(() => _cables = v),
-              onMode: (v) => setState(() => _mode = v),
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Panel(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: _mode == VehicleViewMode.model
-                          ? ModelVehicleView(
-                              selectedNodeId: selected,
-                              onSelect: (id) =>
-                                  ref.read(selectedNodeProvider.notifier).state = id,
-                            )
-                          : VehicleView(
+              padding: EdgeInsets.zero,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Stack(
+                  children: [
+                    // All three renderings stay built. Rebuilding the glTF view costs about a
+                    // second of blank frame on this tablet, and a view switch that blanks is a
+                    // view switch nobody uses twice.
+                    Positioned.fill(
+                      child: IndexedStack(
+                        index: _mode.index,
+                        children: [
+                          ModelVehicleView(
+                            selectedNodeId: selected,
+                            onSelect: _select,
+                            shellOpacity: _opacity,
+                          ),
+                          RepaintBoundary(
+                            child: VehicleView(
                               snapshot: rig.snapshot,
                               selectedNodeId: selected,
-                              plan: _mode == VehicleViewMode.plan,
+                              plan: false,
                               showCameras: _cameras,
                               showCables: _cables,
-                              onSelect: (id) {
-                                ref.read(selectedNodeProvider.notifier).state = id;
-                                final port = id == null ? null : nodeById(id)?.acuPort;
-                                ref.read(selectedPortProvider.notifier).state = port;
-                              },
+                              onSelect: _select,
                             ),
+                          ),
+                          RepaintBoundary(
+                            child: VehicleView(
+                              snapshot: rig.snapshot,
+                              selectedNodeId: selected,
+                              plan: true,
+                              showCameras: _cameras,
+                              showCables: _cables,
+                              onSelect: _select,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const _PortStrip(),
-                  const SizedBox(height: 8),
-                  const _JackStrip(),
-                ],
+                    Positioned(
+                      left: 14,
+                      top: 14,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _ViewSwitch(mode: _mode, onChanged: (m) => setState(() => _mode = m)),
+                          const SizedBox(height: 10),
+                          if (_mode == VehicleViewMode.model)
+                            _OpacityCapsule(
+                              value: _opacity,
+                              onChanged: (v) => setState(() => _opacity = v),
+                            )
+                          else
+                            _LayerCapsule(
+                              cameras: _cameras,
+                              cables: _cables,
+                              onCameras: (v) => setState(() => _cameras = v),
+                              onCables: (v) => setState(() => _cables = v),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Positioned(left: 14, bottom: 14, child: _Legend(mode: _mode)),
+                    Positioned(
+                      right: 14,
+                      bottom: 14,
+                      child: _Hint(
+                        text: switch (_mode) {
+                          VehicleViewMode.model => 'Drag to orbit · pinch to zoom',
+                          VehicleViewMode.iso => 'Drag to orbit · double-tap to reset',
+                          VehicleViewMode.plan => 'Top-down · drag to swing into 3D',
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          const _PortBar(),
         ],
       ),
     );
   }
 }
 
-/// The ten ACU_IT ports under the vehicle, five to a row. One row of ten would give each cell
-/// about 33 logical pixels on this tablet, which truncates every Korean label to its first
-/// syllable -- and the syllable that is cut is the one saying front or rear.
-class _PortStrip extends ConsumerWidget {
-  const _PortStrip();
+// ---------------------------------------------------------------------------
+// Floating controls
+// ---------------------------------------------------------------------------
+
+/// The capsule the floating controls share: solid translucent white rather than a blur, because
+/// a BackdropFilter over a live WebView costs a frame on this tablet and buys nothing here.
+class _Capsule extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const _Capsule({required this.child, this.padding = const EdgeInsets.all(4)});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rig = ref.watch(rigProvider);
-    final selectedPort = ref.watch(selectedPortProvider);
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FC),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Tone.line),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 58,
-            child: Text('ACU_IT\nports',
-                style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w800, color: Tone.muted, height: 1.3)),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                for (final row in [acuItPorts.sublist(0, 5), acuItPorts.sublist(5)])
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      children: [
-                        for (final p in row)
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(6),
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  ref.read(selectedPortProvider.notifier).state = p.id;
-                                  ref.read(selectedNodeProvider.notifier).state = p.peerNodeId;
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: selectedPort == p.id
-                                        ? Tone.accent.withValues(alpha: 0.10)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: selectedPort == p.id ? Tone.accent : Tone.line,
-                                      width: selectedPort == p.id ? 1.4 : 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Text(p.id,
-                                          style: const TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: Tone.muted)),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          p.short,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: p.used ? Tone.text : Tone.faint,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: BoxDecoration(
-                                          color: linkColour(rig.snapshot.link(p.id),
-                                              p.used ? Tone.faint : Tone.line),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
+        color: Colors.white.withValues(alpha: 0.93),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Tone.hairline),
+        boxShadow: const [
+          BoxShadow(color: Color(0x141B2A44), blurRadius: 16, offset: Offset(0, 4)),
         ],
       ),
+      child: child,
     );
   }
 }
 
-/// The five ACU_NO camera jacks, alongside the ACU_IT port strip. The cameras never touch
-/// ACU_IT, so seeing both rows at once is what tells you which box a lost feed belongs to.
-class _JackStrip extends ConsumerWidget {
-  const _JackStrip();
+class _ViewSwitch extends StatelessWidget {
+  final VehicleViewMode mode;
+  final ValueChanged<VehicleViewMode> onChanged;
+
+  const _ViewSwitch({required this.mode, required this.onChanged});
+
+  static const _labels = {
+    VehicleViewMode.model: 'Model',
+    VehicleViewMode.iso: '3D',
+    VehicleViewMode.plan: 'Plan',
+  };
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rig = ref.watch(rigProvider);
-    final selectedPort = ref.watch(selectedPortProvider);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FC),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Tone.line),
-      ),
+  Widget build(BuildContext context) {
+    return _Capsule(
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(
-            width: 58,
-            child: Text('ACU_NO\ncameras',
-                style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w800, color: Tone.muted, height: 1.3)),
-          ),
-          for (final j in acuNoJacks)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(7),
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(selectedPortProvider.notifier).state = j.id;
-                    ref.read(selectedNodeProvider.notifier).state = j.feedNodeIds.first;
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: selectedPort == j.id ? Tone.accent.withValues(alpha: 0.10) : Colors.white,
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(
-                        color: selectedPort == j.id ? Tone.accent : Tone.line,
-                        width: selectedPort == j.id ? 1.4 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: Color(j.dot),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Tone.line),
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(j.id,
-                                      style: const TextStyle(
-                                          fontSize: 10.5, fontWeight: FontWeight.w800)),
-                                  const Spacer(),
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: linkColour(rig.snapshot.link(j.id), Tone.faint),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                j.feedNodeIds.map(shortName).join(' · '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 9.5, color: Tone.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+          for (final m in VehicleViewMode.values)
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onChanged(m);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: m == mode ? Tone.accent : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _labels[m]!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: m == mode ? Colors.white : Tone.muted,
                   ),
                 ),
               ),
@@ -288,22 +208,108 @@ class _JackStrip extends ConsumerWidget {
   }
 }
 
-class _Side extends ConsumerWidget {
+class _LayerCapsule extends StatelessWidget {
   final bool cameras;
   final bool cables;
-  final VehicleViewMode mode;
   final ValueChanged<bool> onCameras;
   final ValueChanged<bool> onCables;
-  final ValueChanged<VehicleViewMode> onMode;
 
-  const _Side({
+  const _LayerCapsule({
     required this.cameras,
     required this.cables,
-    required this.mode,
     required this.onCameras,
     required this.onCables,
-    required this.onMode,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(IconData icon, String label, bool on, VoidCallback tap) => GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            tap();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: on ? Tone.accent.withValues(alpha: 0.10) : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 15, color: on ? Tone.accent : Tone.faint),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: on ? Tone.accent : Tone.faint,
+                    )),
+              ],
+            ),
+          ),
+        );
+
+    return _Capsule(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          item(Icons.videocam_outlined, 'Cameras', cameras, () => onCameras(!cameras)),
+          item(Icons.polyline_outlined, 'Harness', cables, () => onCables(!cables)),
+        ],
+      ),
+    );
+  }
+}
+
+class _OpacityCapsule extends StatelessWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const _OpacityCapsule({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Capsule(
+      padding: const EdgeInsets.fromLTRB(12, 4, 10, 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.opacity, size: 15, color: Tone.faint),
+          const SizedBox(width: 8),
+          const Text('Body',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Tone.muted)),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 128,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 3,
+                activeTrackColor: Tone.accent,
+                inactiveTrackColor: Tone.hairlineStrong,
+                thumbColor: Colors.white,
+                overlayShape: SliderComponentShape.noOverlay,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7, elevation: 2),
+              ),
+              child: Slider(value: value, min: 0.08, max: 1, onChanged: onChanged),
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            child: Text('${(value * 100).round()}%',
+                textAlign: TextAlign.right,
+                style: Type.monoAt(11, weight: FontWeight.w700, colour: Tone.muted)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Legend extends ConsumerWidget {
+  final VehicleViewMode mode;
+
+  const _Legend({required this.mode});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -312,128 +318,136 @@ class _Side extends ConsumerWidget {
     for (final n in allNodes) {
       counts[n.kind] = (counts[n.kind] ?? 0) + 1;
     }
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    Widget tally(Color c, String label, int n) => Padding(
+          padding: const EdgeInsets.only(right: 14),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const SectionTitle('View'),
-              const SizedBox(height: 10),
-              _Segmented(mode: mode, onChanged: onMode),
-              const SizedBox(height: 8),
-              Text(
-                switch (mode) {
-                  VehicleViewMode.model => 'glTF body. Pinch to zoom, drag to orbit.',
-                  VehicleViewMode.iso => 'Schematic. Drag to orbit, double-tap to reset.',
-                  VehicleViewMode.plan => 'Top-down. Drag to swing into 3D, double-tap to reset.',
-                },
-                style: const TextStyle(fontSize: 10.5, color: Tone.faint, height: 1.4),
-              ),
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Text('$n', style: Type.monoAt(12, weight: FontWeight.w800)),
+              const SizedBox(width: 4),
+              Text(label, style: const TextStyle(fontSize: 11, color: Tone.muted)),
             ],
           ),
-        ),
-        const SizedBox(height: 12),
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionTitle('On the vehicle'),
-              const SizedBox(height: 10),
-              _CountRow(colour: Tone.lidar, label: 'LiDAR', n: counts[NodeKind.lidar] ?? 0),
-              _CountRow(colour: Tone.camera, label: 'Camera feeds', n: counts[NodeKind.camera] ?? 0),
-              _CountRow(colour: Tone.acu, label: 'ACU', n: counts[NodeKind.acu] ?? 0),
-              _CountRow(
-                colour: Tone.other,
-                label: 'TCU / display',
-                n: (counts[NodeKind.tcu] ?? 0) + (counts[NodeKind.display] ?? 0),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionTitle('Layers'),
-              const SizedBox(height: 2),
-              _Toggle(label: 'Cameras', value: cameras, onChanged: onCameras),
-              _Toggle(label: 'Harness', value: cables, onChanged: onCables),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionTitle('Link'),
-              const SizedBox(height: 10),
-              if (rig.mode == RigMode.reference)
-                const Text(
-                  'No rig attached. The harness is drawn as designed; nothing here claims a link '
-                  'is up. Switch to DEMO for a scripted rig.',
-                  style: TextStyle(fontSize: 11, color: Tone.muted, height: 1.45),
-                )
-              else ...[
-                _LegendRow(colour: Tone.ok, label: 'Up'),
-                _LegendRow(colour: Tone.warn, label: 'Degraded'),
-                _LegendRow(colour: Tone.bad, label: 'Down'),
-                const SizedBox(height: 6),
-                Text('${rig.snapshot.downCount} link(s) down',
-                    style: const TextStyle(fontSize: 11, color: Tone.muted)),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Panel(
-          tint: const Color(0xFFFFF8EC),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionTitle('Not on the sheets'),
-              const SizedBox(height: 8),
-              const Text(
-                'The side LiDARs (LH / RH) have part numbers and outlines but no ACU port and no '
-                'signal table anywhere in this set, so they are drawn unwired.',
-                style: TextStyle(fontSize: 11, color: Tone.text, height: 1.45),
-              ),
-            ],
-          ),
-        ),
-      ],
+        );
+
+    return _Capsule(
+      padding: const EdgeInsets.fromLTRB(14, 9, 4, 9),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tally(Tone.lidar, 'LiDAR', counts[NodeKind.lidar] ?? 0),
+          tally(Tone.camera, 'cameras', counts[NodeKind.camera] ?? 0),
+          tally(Tone.acu, 'ACU', counts[NodeKind.acu] ?? 0),
+          tally(Tone.tsn, 'TSN', counts[NodeKind.tsn] ?? 0),
+          if (rig.mode == RigMode.simulated && rig.snapshot.downCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Chip2('${rig.snapshot.downCount} down', color: Tone.bad),
+            ),
+        ],
+      ),
     );
   }
 }
 
-class _Segmented extends StatelessWidget {
-  final VehicleViewMode mode;
-  final ValueChanged<VehicleViewMode> onChanged;
+class _Hint extends StatelessWidget {
+  final String text;
 
-  const _Segmented({required this.mode, required this.onChanged});
+  const _Hint({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    Widget seg(String label, bool selected, VoidCallback onTap) => Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
+    return _Capsule(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      child: Text(text, style: Type.tiny),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Port bar
+// ---------------------------------------------------------------------------
+
+/// One bar for both boxes, switched rather than stacked. Two permanent strips took a fifth of the
+/// page to show twenty cells, most of which are not what anyone is looking at.
+class _PortBar extends ConsumerStatefulWidget {
+  const _PortBar();
+
+  @override
+  ConsumerState<_PortBar> createState() => _PortBarState();
+}
+
+class _PortBarState extends ConsumerState<_PortBar> {
+  bool _no = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Toggle2(
+                  left: 'ACU_IT',
+                  right: 'ACU_NO',
+                  rightSelected: _no,
+                  onChanged: (v) => setState(() => _no = v),
+                ),
+                const SizedBox(height: 5),
+                Text(_no ? '5 camera jacks' : '10 Ethernet ports', style: Type.tiny),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: _no ? const _JackCells() : const _PortCells()),
+        ],
+      ),
+    );
+  }
+}
+
+class _Toggle2 extends StatelessWidget {
+  final String left;
+  final String right;
+  final bool rightSelected;
+  final ValueChanged<bool> onChanged;
+
+  const _Toggle2({
+    required this.left,
+    required this.right,
+    required this.rightSelected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget seg(String label, bool on, VoidCallback tap) => Expanded(
+          child: GestureDetector(
+            onTap: tap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: selected ? Tone.accent : Colors.transparent,
+                color: on ? Tone.surface : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
+                boxShadow: on
+                    ? const [BoxShadow(color: Color(0x141B2A44), blurRadius: 6, offset: Offset(0, 1))]
+                    : null,
               ),
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  color: selected ? Colors.white : Tone.muted,
+                  color: on ? Tone.ink : Tone.faint,
                 ),
               ),
             ),
@@ -443,78 +457,164 @@ class _Segmented extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F4F9),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Tone.line),
+        color: Tone.sunken,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: Tone.hairline),
       ),
       child: Row(
         children: [
-          seg('Model', mode == VehicleViewMode.model, () => onChanged(VehicleViewMode.model)),
-          seg('3D', mode == VehicleViewMode.iso, () => onChanged(VehicleViewMode.iso)),
-          seg('Plan', mode == VehicleViewMode.plan, () => onChanged(VehicleViewMode.plan)),
+          seg(left, !rightSelected, () => onChanged(false)),
+          seg(right, rightSelected, () => onChanged(true)),
         ],
       ),
     );
   }
 }
 
-class _CountRow extends StatelessWidget {
-  final Color colour;
-  final String label;
-  final int n;
-
-  const _CountRow({required this.colour, required this.label, required this.n});
+class _PortCells extends ConsumerWidget {
+  const _PortCells();
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
-        children: [
-          Container(width: 9, height: 9, decoration: BoxDecoration(color: colour, shape: BoxShape.circle)),
-          const SizedBox(width: 8),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          Text('$n', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-}
-
-class _LegendRow extends StatelessWidget {
-  final Color colour;
-  final String label;
-
-  const _LegendRow({required this.colour, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Container(width: 16, height: 3, color: colour),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Toggle extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _Toggle({required this.label, required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rig = ref.watch(rigProvider);
+    final selectedPort = ref.watch(selectedPortProvider);
     return Row(
       children: [
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-        Switch(value: value, onChanged: onChanged, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        for (final p in acuItPorts)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(selectedPortProvider.notifier).state = p.id;
+                  ref.read(selectedNodeProvider.notifier).state = p.peerNodeId;
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: selectedPort == p.id ? Tone.accent.withValues(alpha: 0.09) : Tone.sunken,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: selectedPort == p.id ? Tone.accent : Tone.hairline,
+                      width: selectedPort == p.id ? 1.4 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(p.id,
+                              style: Type.monoAt(10.5, weight: FontWeight.w700, colour: Tone.faint)),
+                          const Spacer(),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: linkColour(rig.snapshot.link(p.id),
+                                  p.used ? Tone.hairlineStrong : Tone.hairline),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          p.short,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: p.used ? Tone.ink : Tone.faint,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _JackCells extends ConsumerWidget {
+  const _JackCells();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rig = ref.watch(rigProvider);
+    final selectedPort = ref.watch(selectedPortProvider);
+    return Row(
+      children: [
+        for (final j in acuNoJacks)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(selectedPortProvider.notifier).state = j.id;
+                  ref.read(selectedNodeProvider.notifier).state = j.feedNodeIds.first;
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: selectedPort == j.id ? Tone.accent.withValues(alpha: 0.09) : Tone.sunken,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: selectedPort == j.id ? Tone.accent : Tone.hairline,
+                      width: selectedPort == j.id ? 1.4 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: Color(j.dot),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Tone.hairlineStrong),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Text(j.id, style: Type.monoAt(10.5, weight: FontWeight.w800)),
+                          const Spacer(),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: linkColour(rig.snapshot.link(j.id), Tone.hairlineStrong),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        j.feedNodeIds.map(shortName).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10.5, color: Tone.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

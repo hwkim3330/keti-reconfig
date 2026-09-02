@@ -33,11 +33,7 @@ class _ConsoleShellState extends ConsumerState<ConsoleShell> {
       body: SafeArea(
         child: Row(
           children: [
-            _NavRail(
-              index: _page,
-              dests: _dests,
-              onTap: (i) => setState(() => _page = i),
-            ),
+            _NavRail(index: _page, dests: _dests, onTap: (i) => setState(() => _page = i)),
             Expanded(
               child: Column(
                 children: [
@@ -57,10 +53,30 @@ class _ConsoleShellState extends ConsumerState<ConsoleShell> {
                 ],
               ),
             ),
-            const InspectorPanel(),
+            const _Inspector(),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The inspector is a drawer, not a column. Held open permanently it spent a quarter of the
+/// screen saying "tap something"; now the hero gets that width back until there is something to
+/// inspect.
+class _Inspector extends ConsumerWidget {
+  const _Inspector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = ref.watch(selectedNodeProvider) != null || ref.watch(selectedPortProvider) != null;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      width: open ? 336 : 0,
+      child: open
+          ? const ClipRect(child: OverflowBox(maxWidth: 336, alignment: Alignment.centerLeft, child: InspectorPanel()))
+          : const SizedBox.shrink(),
     );
   }
 }
@@ -75,19 +91,19 @@ class _NavRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 78,
+      width: 80,
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(right: BorderSide(color: Tone.line)),
+        color: Tone.surface,
+        border: Border(right: BorderSide(color: Tone.hairline)),
       ),
       child: Column(
         children: [
-          const SizedBox(height: 14),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Image.asset('assets/keti_logo.png', height: 26, fit: BoxFit.contain),
-          ),
           const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 11),
+            child: Image.asset('assets/keti_logo.png', height: 24, fit: BoxFit.contain),
+          ),
+          const SizedBox(height: 18),
           for (var i = 0; i < dests.length; i++)
             _NavItem(
               icon: dests[i].icon,
@@ -97,7 +113,7 @@ class _NavRail extends StatelessWidget {
             ),
           const Spacer(),
           const _ModeToggle(),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -119,32 +135,49 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      child: Material(
-        color: selected ? Tone.accent.withValues(alpha: 0.10) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            child: Column(
-              children: [
-                Icon(icon, size: 21, color: selected ? Tone.accent : Tone.muted),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    color: selected ? Tone.accent : Tone.muted,
-                  ),
+    // The marker is a bar on the rail's own edge, not a box around the item: the destination
+    // stays the same size whether or not it is current, so the column never shifts under a tap.
+    return SizedBox(
+      height: 62,
+      child: Stack(
+        children: [
+          if (selected)
+            Positioned(
+              left: 0,
+              top: 14,
+              bottom: 14,
+              child: Container(
+                width: 3,
+                decoration: const BoxDecoration(
+                  color: Tone.accent,
+                  borderRadius: BorderRadius.horizontal(right: Radius.circular(3)),
                 ),
-              ],
+              ),
+            ),
+          Positioned.fill(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 21, color: selected ? Tone.accent : Tone.faint),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                        color: selected ? Tone.accent : Tone.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -158,32 +191,31 @@ class _ModeToggle extends ConsumerWidget {
     final rig = ref.watch(rigProvider);
     final sim = rig.mode == RigMode.simulated;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Tooltip(
         message: sim
             ? 'Scripted rig. Every link state and rate on screen is generated.'
             : 'Reference only. No rig attached, so no link is claimed up or down.',
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => ref
-              .read(rigProvider)
-              .setMode(sim ? RigMode.reference : RigMode.simulated),
+          onTap: () => ref.read(rigProvider).setMode(sim ? RigMode.reference : RigMode.simulated),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 9),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              color: sim ? Tone.warn.withValues(alpha: 0.12) : Colors.transparent,
+              color: sim ? Tone.warn.withValues(alpha: 0.12) : Tone.sunken,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: sim ? Tone.warn.withValues(alpha: 0.5) : Tone.line),
+              border: Border.all(color: sim ? Tone.warn.withValues(alpha: 0.5) : Tone.hairline),
             ),
             child: Column(
               children: [
                 Icon(sim ? Icons.play_circle_outline : Icons.menu_book_outlined,
                     size: 20, color: sim ? Tone.warn : Tone.muted),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(sim ? 'DEMO' : 'REF',
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6,
                         color: sim ? Tone.warn : Tone.muted)),
               ],
             ),
@@ -202,49 +234,61 @@ class _TopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rig = ref.watch(rigProvider);
+    final sim = rig.mode == RigMode.simulated;
     return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Tone.line)),
+        color: Tone.surface,
+        border: Border(bottom: BorderSide(color: Tone.hairline)),
       ),
       child: Row(
         children: [
-          const Text('ACU / LiDAR',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
-          const SizedBox(width: 8),
-          Text('· $page', style: const TextStyle(fontSize: 15, color: Tone.muted)),
+          const Text('ACU / LiDAR', style: Type.display),
+          const SizedBox(width: 10),
+          Container(width: 1, height: 20, color: Tone.hairline),
+          const SizedBox(width: 10),
+          Text(page, style: const TextStyle(fontSize: 15, color: Tone.muted, fontWeight: FontWeight.w600)),
           const SizedBox(width: 14),
           const Chip2('2026 · a2z design sheets', color: Tone.faint),
           const Spacer(),
-          if (rig.mode == RigMode.simulated) ...[
-            const Text('Scenario', style: TextStyle(fontSize: 11, color: Tone.muted)),
-            const SizedBox(width: 8),
+          if (sim) ...[
             SizedBox(
-              width: 260,
+              width: 250,
               child: DropdownButtonFormField<String>(
                 initialValue: rig.scenario.id,
                 isDense: true,
-                decoration: const InputDecoration(
+                borderRadius: BorderRadius.circular(12),
+                decoration: InputDecoration(
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Tone.sunken,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Tone.hairline),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Tone.hairline),
+                  ),
                 ),
-                style: const TextStyle(fontSize: 12, color: Tone.text),
+                style: const TextStyle(fontSize: 12, color: Tone.ink, fontWeight: FontWeight.w600),
                 items: [
                   for (final s in scenarios)
                     DropdownMenuItem(value: s.id, child: Text(s.title, overflow: TextOverflow.ellipsis)),
                 ],
-                onChanged: (v) {
-                  final s = scenarios.firstWhere((e) => e.id == v);
-                  ref.read(rigProvider).setScenario(s);
-                },
+                onChanged: (v) =>
+                    ref.read(rigProvider).setScenario(scenarios.firstWhere((e) => e.id == v)),
               ),
             ),
-          ] else
-            const Text('Reference mode · no rig attached',
-                style: TextStyle(fontSize: 12, color: Tone.faint)),
+            const SizedBox(width: 12),
+          ],
+          StatusPill(
+            label: sim ? 'Scripted rig' : 'No rig attached',
+            colour: sim ? Tone.warn : Tone.faint,
+            emphasis: sim,
+          ),
         ],
       ),
     );
@@ -259,19 +303,28 @@ class _SimulatedStamp extends ConsumerWidget {
     final rig = ref.watch(rigProvider);
     return Container(
       width: double.infinity,
-      color: Tone.warn.withValues(alpha: 0.14),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+      decoration: BoxDecoration(
+        color: Tone.warn.withValues(alpha: 0.13),
+        border: Border(bottom: BorderSide(color: Tone.warn.withValues(alpha: 0.3))),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, size: 15, color: Tone.warn),
-          const SizedBox(width: 7),
-          const Text('SIMULATED',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Tone.warn, letterSpacing: 0.8)),
-          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(color: Tone.warn, borderRadius: BorderRadius.circular(5)),
+            child: const Text('SIMULATED',
+                style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1)),
+          ),
+          const SizedBox(width: 11),
           Expanded(
             child: Text(
               '${rig.scenario.detail}  Link states and Mb/s below are generated, not measured.',
-              style: const TextStyle(fontSize: 11, color: Tone.text),
+              style: const TextStyle(fontSize: 11.5, color: Tone.ink),
               overflow: TextOverflow.ellipsis,
             ),
           ),

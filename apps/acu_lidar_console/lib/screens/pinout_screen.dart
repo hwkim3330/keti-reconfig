@@ -55,7 +55,7 @@ class _PinoutCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFFF6F8FB),
               borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: Tone.line),
+              border: Border.all(color: Tone.hairline),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -64,7 +64,7 @@ class _PinoutCard extends StatelessWidget {
                 const SizedBox(width: 9),
                 Expanded(
                   child: Text(pinout.note,
-                      style: const TextStyle(fontSize: 11.5, color: Tone.text, height: 1.5)),
+                      style: const TextStyle(fontSize: 11.5, color: Tone.ink, height: 1.5)),
                 ),
               ],
             ),
@@ -103,7 +103,7 @@ class _Table extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Tone.line)),
+              border: Border(top: BorderSide(color: Tone.hairline)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,7 +128,7 @@ class _Table extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: _swatch(r.colour),
                             shape: BoxShape.circle,
-                            border: Border.all(color: Tone.line),
+                            border: Border.all(color: Tone.hairline),
                           ),
                         ),
                         const SizedBox(width: 5),

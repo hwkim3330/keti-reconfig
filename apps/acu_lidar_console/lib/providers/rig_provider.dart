@@ -75,6 +75,12 @@ const scenarios = <Scenario>[
       down: {'1-1'}, degraded: {'1-2'}),
   Scenario('cam3', 'CAM 3 jack down', 'Side LH FRT and Side RH RR both lost — one dual jack carries two feeds.',
       down: {'CAM 3'}),
+  Scenario('path1', 'TSN path 1 cut', 'Front A to rear is gone. Everything the front pair carries has to take path 2.',
+      down: {'path1'}, degraded: {'path2'}),
+  Scenario('path2', 'TSN path 2 cut', 'Front B to rear is gone. Path 1 carries both halves.',
+      down: {'path2'}, degraded: {'path1'}),
+  Scenario('bothpaths', 'Both TSN paths cut', 'No route left between the front pair and the rear switch.',
+      down: {'path1', 'path2'}),
   Scenario('tcu', 'TCU_M link down', 'Port 2-2 lost. Telematics off the ACU_IT side; ACU_NO still reaches TCU-M on its own 1G links.',
       down: {'2-2'}),
 ];
@@ -135,6 +141,9 @@ class RigController extends ChangeNotifier {
     'lan1': 300,
     'lan2': 4200,
     'lan3': 700,
+    'path1': 2600,
+    'path2': 2600,
+    'trunk': 4200,
   };
 
   void _recompute() {

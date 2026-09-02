@@ -102,14 +102,7 @@ class _ConnectorFace extends ConsumerWidget {
         const SizedBox(height: 2),
         Text(connector.partNumber, style: const TextStyle(fontSize: 11, color: Tone.muted)),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1C2230),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(children: cells),
-        ),
+        Board(padding: const EdgeInsets.all(10), child: Column(children: cells)),
         const SizedBox(height: 7),
         Text(connector.note,
             style: const TextStyle(fontSize: 10.5, color: Tone.muted, height: 1.4)),
@@ -131,17 +124,18 @@ class _PortCell extends ConsumerWidget {
 
     if (port == null) {
       return Container(
-        height: 62,
+        height: 64,
         decoration: BoxDecoration(
-          color: const Color(0xFF262E3E),
-          borderRadius: BorderRadius.circular(7),
-          border: Border.all(color: const Color(0xFF39435A)),
+          color: Tone.boardCell.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Tone.boardEdge.withValues(alpha: 0.6)),
         ),
         alignment: Alignment.center,
         child: Text(
           cavity == null ? '—' : '$cavity\nno label',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 9.5, color: Color(0xFF7C889E), height: 1.3),
+          style: Type.monoAt(9.5, weight: FontWeight.w600, colour: Tone.boardMuted)
+              .copyWith(height: 1.4),
         ),
       );
     }
@@ -160,13 +154,13 @@ class _PortCell extends ConsumerWidget {
         ref.read(selectedNodeProvider.notifier).state = p.peerNodeId;
       },
       child: Container(
-        height: 62,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF2B3956) : const Color(0xFF262E3E),
-          borderRadius: BorderRadius.circular(7),
+          color: selected ? Tone.boardCellLive : Tone.boardCell,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: selected ? Tone.accent : const Color(0xFF39435A),
+            color: selected ? Tone.accent : Tone.boardEdge,
             width: selected ? 1.6 : 1,
           ),
         ),
@@ -175,9 +169,7 @@ class _PortCell extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Text('Port ${p.id}',
-                    style: const TextStyle(
-                        fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF9FB0CA))),
+                Text(p.id, style: Type.monoAt(10.5, weight: FontWeight.w700, colour: Tone.boardMuted)),
                 const Spacer(),
                 Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
               ],
@@ -194,7 +186,7 @@ class _PortCell extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: p.used ? Colors.white : const Color(0xFF7C889E),
+                  color: p.used ? Tone.boardInk : Tone.boardMuted,
                 ),
               ),
             ),
@@ -207,11 +199,11 @@ class _PortCell extends ConsumerWidget {
                   : p.speed.value.replaceAll('BASE-T1', 'B-T1'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 9.5,
-                color: p.speed.from == Provenance.inferred && rate == null
-                    ? const Color(0xFF6C7A93)
-                    : const Color(0xFF9FB0CA),
+              style: Type.monoAt(9.5,
+                  weight: FontWeight.w600,
+                  colour: p.speed.from == Provenance.inferred && rate == null
+                      ? Tone.boardMuted.withValues(alpha: 0.75)
+                      : Tone.boardMuted).copyWith(
                 fontStyle: p.speed.from == Provenance.inferred && rate == null
                     ? FontStyle.italic
                     : FontStyle.normal,
@@ -237,7 +229,7 @@ class _PanelPorts extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFF6F8FB),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Tone.line),
+        border: Border.all(color: Tone.hairline),
       ),
       child: Row(
         children: [
@@ -289,12 +281,8 @@ class _AcuNoSection extends ConsumerWidget {
           const SizedBox(height: 12),
           // The faceplate as drawn: USB-C, five dual FAKRA jacks, USB-C on the top row; LAN and
           // TOTAL I/O below.
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E2A4A),
-              borderRadius: BorderRadius.circular(10),
-            ),
+          Board(
+            padding: const EdgeInsets.all(13),
             child: Column(
               children: [
                 Row(
@@ -331,9 +319,8 @@ class _AcuNoSection extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          const Text(fakraJackNote,
-              style: TextStyle(fontSize: 11, color: Tone.muted, height: 1.45)),
+          const SizedBox(height: 12),
+          const Text(fakraJackNote, style: Type.small),
         ],
       ),
     );
@@ -351,7 +338,7 @@ class _CamJackCell extends ConsumerWidget {
     final state = rig.snapshot.link(jack.id);
     final selectedPort = ref.watch(selectedPortProvider);
     final selected = selectedPort == jack.id;
-    final border = linkColour(state, const Color(0xFF3D4C6E));
+    final border = linkColour(state, Tone.boardEdge);
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
@@ -363,7 +350,7 @@ class _CamJackCell extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF2C3C63) : const Color(0xFF273454),
+          color: selected ? Tone.boardCellLive : Tone.boardCell,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: selected ? Tone.accent : border, width: selected ? 1.6 : 1),
         ),
@@ -401,7 +388,7 @@ class _CamJackCell extends ConsumerWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF8FA3C8)),
+                        border: Border.all(color: Tone.boardMuted),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -434,9 +421,9 @@ class _LanBlock extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFF273454),
+        color: Tone.boardCell,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF3D4C6E)),
+        border: Border.all(color: Tone.boardEdge),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -466,8 +453,8 @@ class _LanBlock extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 10,
                         color: acuNoLan[i].note != null
-                            ? const Color(0xFFE0A03A)
-                            : const Color(0xFFC7D3E8),
+                            ? Tone.warn
+                            : Tone.boardInk,
                       ),
                     ),
                   ),
@@ -500,9 +487,9 @@ class _FacePlateBox extends StatelessWidget {
       height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFF273454),
+        color: Tone.boardCell,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF3D4C6E)),
+        border: Border.all(color: Tone.boardEdge),
       ),
       child: Text(label,
           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF9FB0CA))),
@@ -530,7 +517,7 @@ class _RevisionNote extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(acuItRevisionNote,
-              style: TextStyle(fontSize: 11.5, color: Tone.text, height: 1.5)),
+              style: TextStyle(fontSize: 11.5, color: Tone.ink, height: 1.5)),
         ],
       ),
     );

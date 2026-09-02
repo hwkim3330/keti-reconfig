@@ -26,7 +26,7 @@ class InspectorPanel extends ConsumerWidget {
       width: 328,
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(left: BorderSide(color: Tone.line)),
+        border: Border(left: BorderSide(color: Tone.hairline)),
       ),
       child: node == null && port == null && jack == null
           ? const _Empty()
@@ -157,7 +157,7 @@ class _JackCard extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: Color(jack.dot),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Tone.line),
+                  border: Border.all(color: Tone.hairline),
                 ),
               ),
               const SizedBox(width: 8),
@@ -239,6 +239,31 @@ class _NodeCard extends ConsumerWidget {
           if (node.kind == NodeKind.camera) _Row('Jack', _jackFor(node.id)),
           const SizedBox(height: 8),
           Text(node.mount, style: const TextStyle(fontSize: 11.5, color: Tone.muted, height: 1.5)),
+          if (node.kind == NodeKind.tsn) ...[
+            const SizedBox(height: 10),
+            const SectionTitle('Trunks'),
+            const SizedBox(height: 8),
+            for (final t in tsnTrunks.where((t) => t.from == node.id || t.to == node.id))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: Tone.tsn,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(t.label, style: Type.small)),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+            const Note(tsnNote, icon: Icons.hub_outlined, colour: Tone.tsn),
+          ],
           if (node.kind == NodeKind.lidar && node.acuPort == null) ...[
             const SizedBox(height: 8),
             const _Warn('No ACU port is named for this unit anywhere in the sheet set, and no '
@@ -314,7 +339,7 @@ class _PinoutDialog extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         decoration: const BoxDecoration(
-                          border: Border(top: BorderSide(color: Tone.line)),
+                          border: Border(top: BorderSide(color: Tone.hairline)),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,7 +371,7 @@ class _PinoutDialog extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(pinout.note,
-                style: const TextStyle(fontSize: 11.5, color: Tone.text, height: 1.5)),
+                style: const TextStyle(fontSize: 11.5, color: Tone.ink, height: 1.5)),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -380,8 +405,10 @@ class _Row extends StatelessWidget {
             child: Text(label, style: const TextStyle(fontSize: 11, color: Tone.muted)),
           ),
           Expanded(
+            // Identifiers, not prose: part numbers and port ids line up in a column when they
+            // are set monospaced, and that is how they get compared.
             child: Text(value,
-                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, height: 1.4)),
+                style: Type.monoAt(11.5, weight: FontWeight.w600).copyWith(height: 1.4)),
           ),
         ],
       ),
@@ -420,7 +447,7 @@ class _SourcedRow extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
-                          color: inferred ? Tone.muted : Tone.text,
+                          color: inferred ? Tone.muted : Tone.ink,
                           fontStyle: inferred ? FontStyle.italic : FontStyle.normal,
                         ),
                       ),
@@ -452,25 +479,5 @@ class _Warn extends StatelessWidget {
   const _Warn(this.text);
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(9),
-      decoration: BoxDecoration(
-        color: Tone.warn.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Tone.warn.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.error_outline, size: 14, color: Tone.warn),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Text(text,
-                style: const TextStyle(fontSize: 11, color: Tone.text, height: 1.45)),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Note(text);
 }

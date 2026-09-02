@@ -34,7 +34,7 @@ class Sourced<T> {
 // Devices on the vehicle
 // ---------------------------------------------------------------------------
 
-enum NodeKind { lidar, camera, acu, tcu, display }
+enum NodeKind { lidar, camera, acu, tcu, display, tsn }
 
 /// A box on the vehicle. [pos] is a plan-view coordinate: x -1 (left) .. +1 (right),
 /// y 0 (front bumper) .. 1 (rear bumper). It is a layout, not a measurement -- the sheets
@@ -200,7 +200,68 @@ const cameraNodes = <Node>[
   Node(id: 'cam_rh_rr', name: 'Side RH RR', kind: NodeKind.camera, model: 'Side · 110°', pos: Offset(0.86, 0.66), mount: 'Right flank, aft.'),
 ];
 
-List<Node> get allNodes => [...lidarNodes, ...ecuNodes, ...cameraNodes];
+/// The KETI TSN backbone. **Not on the a2z sheets** -- the sheets run every sensor straight into
+/// an ACU port. These three switches are what this project inserts into that harness, and they
+/// are drawn in a different colour and listed separately so the two are never read as one
+/// document. Two front switches and one rear give the redundant pair of paths the reconfiguration
+/// demo needs: lose one and the schedule moves the traffic onto the other.
+const tsnNodes = <Node>[
+  Node(
+    id: 'tsn_fa',
+    name: 'TSN-F A',
+    ko: '전방 스위치 A',
+    kind: NodeKind.tsn,
+    model: 'LAN9692 · front, path 1',
+    pos: Offset(0.34, 0.26),
+    mount: 'Front compartment, right. Aggregates the forward sensors and carries path 1 aft.',
+  ),
+  Node(
+    id: 'tsn_fb',
+    name: 'TSN-F B',
+    ko: '전방 스위치 B',
+    kind: NodeKind.tsn,
+    model: 'LAN9692 · front, path 2',
+    pos: Offset(-0.34, 0.26),
+    mount: 'Front compartment, left. The redundant half of the front pair, carrying path 2 aft.',
+  ),
+  Node(
+    id: 'tsn_r',
+    name: 'TSN-R',
+    ko: '후방 스위치',
+    kind: NodeKind.tsn,
+    model: 'LAN9692 · centre',
+    pos: Offset(0.0, 0.55),
+    mount: 'Mid-cabin, just aft of centre. Pulled forward off the rear bulkhead so both paths '
+        'run about the same length and the trunk to ACU_IT is the only long run left.',
+  ),
+];
+
+/// A trunk between two boxes of the backbone. The pair of front-to-rear runs is the whole point:
+/// they are the two routes a schedule can choose between.
+class Trunk {
+  final String from;
+  final String to;
+  final String label;
+
+  /// Which of the two redundant paths this run belongs to, or null for a single link.
+  final int? path;
+
+  const Trunk(this.from, this.to, this.label, {this.path});
+}
+
+const tsnTrunks = <Trunk>[
+  Trunk('tsn_fa', 'tsn_r', 'Path 1 · front A to rear', path: 1),
+  Trunk('tsn_fb', 'tsn_r', 'Path 2 · front B to rear', path: 2),
+  Trunk('tsn_r', 'acu_it', 'Rear switch to ACU_IT'),
+];
+
+const tsnNote =
+    'The three switches and the two paths between them are the KETI insertion, not a reading of '
+    'the a2z sheets. On the sheets every sensor runs straight into an ACU port; here the forward '
+    'sensors are aggregated by the front pair and carried aft on two independent runs, so a cut '
+    'run is a reroute rather than a lost sensor.';
+
+List<Node> get allNodes => [...lidarNodes, ...ecuNodes, ...tsnNodes, ...cameraNodes];
 
 /// A name that fits a strip cell. The sheet names are descriptive sentences ("Side LH FRT
 /// Camera (110°)"); ellipsising them cuts off the part that says which one it is.
