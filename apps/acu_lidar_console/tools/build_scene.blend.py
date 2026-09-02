@@ -1,5 +1,5 @@
 """Assemble the console's scene: the cleaned body, the CAD devices inside it, spinning wheels,
-lamps that can be lit, and a plate.
+lamps that can be lit.
 
     flutter test test/export_devices_test.dart          # -> build/devices.json
     /snap/bin/blender --background --factory-startup --python tools/build_scene.blend.py -- \
@@ -17,16 +17,12 @@ Everything this adds is addressable by name from the app:
   play it. glTF animation is the only way to turn a wheel in model-viewer: its scene graph can
   reach a material but not a node transform.
 * `LAMP_FRONT` / `LAMP_REAR` — emissive bars. The app raises emissive strength to switch them on.
-* `PLATE` — a quad carrying a generated texture, so what it says is a string in this script and
-  not a repaint of the body atlas.
 """
 
 import json
 import math
 import os
-import subprocess
 import sys
-import tempfile
 
 import bmesh
 import bpy
@@ -39,7 +35,6 @@ DEVICE_SCALE = 1.6
 WHEEL_SPIN_FRAMES = 48
 TRUNK_SEGMENTS = 9
 TRUNK_RADIUS = 0.022
-PLATE_TEXT = 'KETI TSN'
 
 
 def body_bounds():
@@ -122,7 +117,9 @@ def spin_wheels():
     # Set the interpolation before inserting rather than editing curves afterwards: Blender 5
     # moved F-curves into slotted actions and Action.fcurves is gone.
     bpy.context.preferences.edit.keyframe_new_interpolation_type = 'LINEAR'
-    for o in [x for x in bpy.data.objects if x.name.startswith('WHEEL_')]:
+    import re
+    wheels = [x for x in bpy.data.objects if re.fullmatch(r'WHEEL_[FR][LR]', x.name)]
+    for o in wheels:
         bpy.ops.object.select_all(action='DESELECT')
         o.select_set(True)
         bpy.context.view_layer.objects.active = o
@@ -235,92 +232,80 @@ def rebuild_wheels():
         hubs.append((o.name, centre, radius))
         bpy.data.objects.remove(o, do_unlink=True)
 
-    # A wheel: a tyre with chamfered shoulders so the silhouette is not a can, a flat cover, the
-    # cross the original carries, and a hub cap. 64 segments -- at 36 the circle reads as a
-    # polygon at any useful zoom, which is the whole complaint about the imported one.
+    # One object per part, one material each. Packing tread, shoulders, cover, cross, cap and
+    # well into a single mesh and assigning materials by face-index ranges was wrong by
+    # construction: n-gon caps triangulate to different counts, so the ranges drifted and the
+    # white cross came out wearing the tyre's material. Separate objects cannot drift. The cover,
+    # cross and cap are parented to the tyre so the spin carries them; the well is not, because
+    # a wheel arch does not turn.
     SEG = 64
+
+    def cyl(bm, cx, cy, cz, r, w, segments=SEG):
+        ret = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments,
+                                    radius1=r, radius2=r, depth=w)
+        bmesh.ops.rotate(bm, verts=ret['verts'], cent=(0, 0, 0),
+                         matrix=Matrix.Rotation(math.pi / 2, 3, 'Y'))
+        bmesh.ops.translate(bm, verts=ret['verts'], vec=(cx, cy, cz))
+
+    def solid(name, colour, rough, metal, build):
+        me = bpy.data.meshes.new(name)
+        bm = bmesh.new()
+        build(bm)
+        bm.to_mesh(me)
+        bm.free()
+        mat = bpy.data.materials.new(f'{name.lower()}')
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes['Principled BSDF']
+        bsdf.inputs['Base Color'].default_value = (*colour, 1.0)
+        bsdf.inputs['Roughness'].default_value = rough
+        bsdf.inputs['Metallic'].default_value = metal
+        mat.diffuse_color = (*colour, 1.0)
+        me.materials.append(mat)
+        obj = bpy.data.objects.new(name, me)
+        bpy.context.scene.collection.objects.link(obj)
+        return obj
+
     for name, centre, radius in hubs:
         side = 1.0 if centre.x > 0 else -1.0
         width = radius * 0.46
         outer = centre.x + side * width / 2
+        cy, cz = centre.y, centre.z
 
-        me = bpy.data.meshes.new(name)
-        bm = bmesh.new()
-        spans = []
+        def tyre(bm):
+            cyl(bm, centre.x, cy, cz, radius, width * 0.72)
+            cyl(bm, centre.x - width * 0.43, cy, cz, radius * 0.955, width * 0.14)
+            cyl(bm, centre.x + width * 0.43, cy, cz, radius * 0.955, width * 0.14)
 
-        def part(build):
-            first = len(bm.faces)
-            build()
-            bm.faces.ensure_lookup_table()
-            spans.append((first, len(bm.faces)))
+        wheel = solid(name, (0.055, 0.058, 0.065), 0.94, 0.0, tyre)
 
-        def disc(cx, r, w, segments=SEG):
-            ret = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments,
-                                        radius1=r, radius2=r, depth=w)
-            bmesh.ops.rotate(bm, verts=ret['verts'], cent=(0, 0, 0),
-                             matrix=Matrix.Rotation(math.pi / 2, 3, 'Y'))
-            bmesh.ops.translate(bm, verts=ret['verts'], vec=(cx, centre.y, centre.z))
+        cover = solid(f'{name}_COVER', (0.075, 0.079, 0.088), 0.85, 0.0,
+                      lambda bm: cyl(bm, outer + side * 0.002, cy, cz, radius * 1.0, 0.005))
 
-        def slab(cx, length, thick, depth, angle):
-            ret = bmesh.ops.create_cube(bm, size=1.0)
-            bmesh.ops.scale(bm, verts=ret['verts'], vec=(depth, length, thick))
-            bmesh.ops.rotate(bm, verts=ret['verts'], cent=(0, 0, 0),
-                             matrix=Matrix.Rotation(angle, 3, 'X'))
-            bmesh.ops.translate(bm, verts=ret['verts'], vec=(cx, centre.y, centre.z))
+        def cross(bm):
+            # Arms out to 0.9R and a quarter of the radius wide, standing proud of the cover:
+            # the size the original wheel carries.
+            for angle in (math.pi / 4, -math.pi / 4):
+                ret = bmesh.ops.create_cube(bm, size=1.0)
+                bmesh.ops.scale(bm, verts=ret['verts'],
+                                vec=(0.014, radius * 1.80, radius * 0.26))
+                bmesh.ops.rotate(bm, verts=ret['verts'], cent=(0, 0, 0),
+                                 matrix=Matrix.Rotation(angle, 3, 'X'))
+                bmesh.ops.translate(bm, verts=ret['verts'],
+                                    vec=(outer + side * 0.016, cy, cz))
 
-        # tread, then a shoulder ring at each edge
-        part(lambda: disc(centre.x, radius, width * 0.72))
-        part(lambda: disc(centre.x - width * 0.43, radius * 0.955, width * 0.14))
-        part(lambda: disc(centre.x + width * 0.43, radius * 0.955, width * 0.14))
-        part(lambda: disc(outer + side * 0.002, radius * 0.72, 0.005))   # cover
-        # The cross, white and standing proud of the cover. Flush and dark it read as two
-        # hairlines, which is not what the original carries.
-        part(lambda: slab(outer + side * 0.016, radius * 1.16, radius * 0.20, 0.014,
-                          math.pi / 4))
-        part(lambda: slab(outer + side * 0.016, radius * 1.16, radius * 0.20, 0.014,
-                          -math.pi / 4))
-        part(lambda: disc(outer + side * 0.026, radius * 0.18, 0.010, segments=24))
-        # An arch liner: a dark ring sitting in the body opening. The opening was cut around the
-        # old blob wheel and its edge is ragged; no amount of face culling makes a torn boundary
-        # tidy, so it is covered by the thing that covers it on a real vehicle.
-        # Exactly the tyre's radius, sitting inboard of it: it caps the wheel well so the arch
-        # is dark instead of a void, and it cannot poke out under the tyre. At 1.16R its bottom
-        # edge reached below the contact patch and showed as a black crescent under the wheel.
-        part(lambda: disc(centre.x - side * width * 0.55, radius * 1.0, width * 1.5,
-                          segments=SEG))
-        bm.to_mesh(me)
-        bm.free()
+        cross_obj = solid(f'{name}_CROSS', (0.94, 0.95, 0.96), 0.30, 0.05, cross)
+        cap = solid(f'{name}_CAP', (0.40, 0.42, 0.46), 0.40, 0.50,
+                    lambda bm: cyl(bm, outer + side * 0.026, cy, cz, radius * 0.18, 0.010,
+                                   segments=24))
+        for child in (cover, cross_obj, cap):
+            child.parent = wheel
+            child.matrix_parent_inverse = wheel.matrix_world.inverted()
 
-        for label, colour, rough, metal in (
-            ('tyre', (0.055, 0.058, 0.065, 1), 0.94, 0.0),
-            ('shoulder', (0.075, 0.078, 0.086, 1), 0.90, 0.0),
-            ('rim', (0.085, 0.090, 0.10, 1), 0.55, 0.10),
-            ('cross', (0.94, 0.95, 0.96, 1), 0.30, 0.05),
-            ('cap', (0.40, 0.42, 0.46, 1), 0.40, 0.50),
-            ('arch', (0.055, 0.058, 0.064, 1), 0.95, 0.0),
-        ):
-            mat = bpy.data.materials.new(f'wheel_{label}')
-            mat.use_nodes = True
-            bsdf = mat.node_tree.nodes['Principled BSDF']
-            bsdf.inputs['Base Color'].default_value = colour
-            bsdf.inputs['Roughness'].default_value = rough
-            bsdf.inputs['Metallic'].default_value = metal
-            me.materials.append(mat)
+        solid(f'WELL_{name.split("_")[1]}', (0.055, 0.058, 0.064), 0.95, 0.0,
+              lambda bm: cyl(bm, centre.x - side * width * 0.55, cy, cz, radius * 1.0,
+                             width * 1.5))
 
-        # tread -> tyre, both shoulders -> shoulder, cover -> rim, both slabs -> cross, cap -> cap
-        slot_for = [0, 1, 1, 2, 3, 3, 4, 5]
-        for (first, last), slot in zip(spans, slot_for):
-            for i in range(first, last):
-                me.polygons[i].material_index = slot
-
-        obj = bpy.data.objects.new(name, me)
-        bpy.context.scene.collection.objects.link(obj)
-        used = {}
-        for poly in me.polygons:
-            used[poly.material_index] = used.get(poly.material_index, 0) + 1
-        names = [m.name.split('.')[0] for m in me.materials]
-        breakdown = ', '.join(f'{names[k]} {v}' for k, v in sorted(used.items()))
-        print(f'  {name}: r {radius:.3f} w {width:.3f}, {len(me.polygons)} faces -- {breakdown}')
+        print(f'  {name}: r {radius:.3f} w {width:.3f}, tyre+cover+cross+cap+well as 5 objects')
 
     # No face culling around the openings. It was tried at two radii: tight, it left the ragged
     # lip of the old cut; wide, it took 2,392 faces out of the body and the "jagged notch" beside
@@ -498,64 +483,10 @@ def carve_lamps(lo, hi):
             lamp.data.materials.append(mat)
 
 
-def make_plate_image(path, text):
-    """Rendered here rather than painted into the body atlas, so the wording stays a string.
-
-    Run through the system interpreter, not Blender's: `sys.executable` inside Blender is Blender,
-    and its bundled Python has no PIL."""
-    script = f'''
-from PIL import Image, ImageDraw, ImageFont
-W, H = 640, 160
-im = Image.new('RGB', (W, H), (250, 250, 248))
-d = ImageDraw.Draw(im)
-d.rounded_rectangle([5, 5, W - 6, H - 6], radius=16, outline=(24, 30, 44), width=6)
-font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 56)
-t = {text!r}
-box = d.textbbox((0, 0), t, font=font)
-d.text(((W - (box[2] - box[0])) / 2, (H - (box[3] - box[1])) / 2 - box[1]), t,
-       font=font, fill=(20, 26, 40))
-im.save({path!r})
-'''
-    subprocess.run(['/usr/bin/python3', '-c', script], check=True)
-
-
-def add_plate(lo, hi, text):
-    size = hi - lo
-    path = os.path.join(tempfile.gettempdir(), 'acu_plate.png')
-    make_plate_image(path, text)
-
-    w = size.x * 0.135
-    h = w * 160 / 640
-    y = lo.y - 0.006   # proud of the fascia; set inside, the body covers it
-    z = lo.z + size.z * 0.175
-    me = bpy.data.meshes.new('PLATE')
-    bm = bmesh.new()
-    uv = bm.loops.layers.uv.new('UVMap')
-    pts = [
-        Vector((-w, y, z - h)),
-        Vector((w, y, z - h)),
-        Vector((w, y, z + h)),
-        Vector((-w, y, z + h)),
-    ]
-    face = bm.faces.new([bm.verts.new(p) for p in pts])
-    for loop, coord in zip(face.loops, [(0, 0), (1, 0), (1, 1), (0, 1)]):
-        loop[uv].uv = coord
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(me)
-    bm.free()
-
-    mat = bpy.data.materials.new('plate')
-    mat.use_nodes = True
-    nt = mat.node_tree
-    bsdf = nt.nodes['Principled BSDF']
-    tex = nt.nodes.new('ShaderNodeTexImage')
-    tex.image = bpy.data.images.load(path)
-    nt.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
-    bsdf.inputs['Roughness'].default_value = 0.5
-    obj = bpy.data.objects.new('PLATE', me)
-    obj.data.materials.append(mat)
-    bpy.context.scene.collection.objects.link(obj)
-    return obj
+# No plate. It was a generated quad with text on it, and it was the untidiest thing on the
+# vehicle: proud of a curved fascia, competing with the lamp panel, and its edge cutting across
+# the bumper moulding. The body already carries its own plate recess in the atlas, which is
+# enough -- and the console's name belongs in the console's chrome, not on the model.
 
 
 def merge_wheel_animations(path):
@@ -595,10 +526,10 @@ def merge_wheel_animations(path):
     js_chunk = json.dumps(js, separators=(',', ':')).encode('utf-8')
     js_chunk += b' ' * ((4 - len(js_chunk) % 4) % 4)
     body = b''
-    out = bytearray()
-    for ctype, chunk in chunks:
+    for _, chunk in chunks:
         body = chunk
     total = 12 + 8 + len(js_chunk) + 8 + len(body)
+    out = bytearray()
     out += struct.pack('<III', 0x46546C67, 2, total)
     out += struct.pack('<II', len(js_chunk), 0x4E4F534A)
     out += js_chunk
@@ -625,7 +556,6 @@ def main(body_path, devices_path, out_path):
     add_valance(lo, hi)
     add_trunks(payload, lo, hi, DEVICE_SCALE)
     carve_lamps(lo, hi)
-    add_plate(lo, hi, PLATE_TEXT)
 
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.export_scene.gltf(
