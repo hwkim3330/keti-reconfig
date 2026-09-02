@@ -70,6 +70,17 @@ fi
 
 URL="udp://@0.0.0.0:${PORT}?fifo_size=8000000&overrun_nonfatal=1"
 
+# The DSI panel is native portrait (720x1280) but mounted landscape for the 16:9
+# video, so rotate the whole output to match - then the video fills 1280x720 with
+# no crop and the OSD text rides upright with it. TRAFGEN_ROTATE overrides
+# (normal|90|180|270); set to "normal" to keep portrait. wlr-randr only works
+# under a wlroots compositor (labwc/wayfire); it's a no-op otherwise.
+ROT="${TRAFGEN_ROTATE:-270}"
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wlr-randr >/dev/null 2>&1; then
+  OUT="$(wlr-randr 2>/dev/null | awk 'NR==1{print $1}')"
+  [ -n "$OUT" ] && wlr-randr --output "$OUT" --transform "$ROT" 2>/dev/null || true
+fi
+
 # Restart loop: a live UDP stream pauses when the source restarts or a flood
 # starves it to nothing; the player then hits EOF and exits. Come straight back.
 while true; do
@@ -80,7 +91,6 @@ while true; do
         --hwdec=auto-safe \
         $VO \
         --fullscreen \
-        --panscan=1.0 \
         --no-osc --no-osd-bar --osd-level=0 \
         --no-input-default-bindings --input-conf=/dev/null \
         --cursor-autohide=always --no-input-cursor \

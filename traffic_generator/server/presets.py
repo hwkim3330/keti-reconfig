@@ -109,6 +109,46 @@ PRESETS: dict[str, dict] = {
             for i, p in enumerate((0, 2, 4, 6))
         ],
     },
+    "flood_hi_512": {
+        "label": "Flood · 512B · PCP7 (TC7)",
+        "note": "Small-frame line rate tagged VLAN100 PCP7 -> TC7, so it OUTRANKS the "
+        "best-effort video and starves it. This is the 'break the video' flood: without "
+        "CBS the higher-priority storm wins; CBS reserving the video's queue is what saves it.",
+        "streams": [
+            {
+                "name": "kill",
+                "frame_size": 512,
+                "vlan_id": 100,
+                "pcp": 7,
+                "rate_mode": "max",
+                "rate_value": 0,
+                "cpu": 0,
+                "queue": 0,
+                "clone_skb": 100000,
+                "burst": 8,
+            }
+        ],
+    },
+    "flood_hi_64": {
+        "label": "Flood · 64B · PCP7 (TC7)",
+        "note": "64B PCP7 storm - the hardest hit at the highest class. Breaks the video "
+        "hardest; CBS on the video queue is the only thing that protects it.",
+        "streams": [
+            {
+                "name": f"kill{i}",
+                "frame_size": 64,
+                "vlan_id": 100,
+                "pcp": 7,
+                "rate_mode": "max",
+                "rate_value": 0,
+                "cpu": i,
+                "queue": i,
+                "clone_skb": 100000,
+                "burst": 8,
+            }
+            for i in range(4)
+        ],
+    },
     "background_100m": {
         "label": "Background 100 Mbps",
         "note": "Untagged best-effort load to sit underneath a TSN measurement.",
