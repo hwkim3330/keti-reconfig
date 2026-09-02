@@ -37,6 +37,8 @@ from mathutils import Matrix, Vector
 # and the app says so on screen.
 DEVICE_SCALE = 1.6
 WHEEL_SPIN_FRAMES = 48
+TRUNK_SEGMENTS = 9
+TRUNK_RADIUS = 0.022
 PLATE_TEXT = 'ACU / LiDAR'
 
 
@@ -133,6 +135,79 @@ def spin_wheels():
             o.rotation_euler = (angle, 0, 0)
             o.keyframe_insert('rotation_euler', frame=frame)
         print(f'  spin {o.name}')
+
+
+def add_trunks(payload, lo, hi, scale):
+    """The links between the switches, as geometry, cut into segments the app can light in turn.
+
+    A static line says the switches are wired together. A line whose segments light one after the
+    other says traffic is moving through it, and a line that goes red and stops says the module
+    opened -- which is the whole demo. Nine segments per run is enough to read as motion on a
+    tablet without turning into a dotted line.
+    """
+    size = hi - lo
+
+    def place(dev):
+        return Vector((
+            (lo.x + hi.x) / 2 + dev['nx'] * size.x / 2,
+            lo.y + dev['ny'] * size.y,
+            lo.z + dev['nz'] * size.z + 0.04 * scale,
+        ))
+
+    by_id = {d['id']: d for d in payload['devices']}
+    runs = (
+        (1, 'tsn_fa', 'tsn_r'),
+        (2, 'tsn_fb', 'tsn_r'),
+        (3, 'tsn_fa', 'tsn_fb'),
+    )
+    for path, a_id, b_id in runs:
+        if a_id not in by_id or b_id not in by_id:
+            continue
+        a, b = place(by_id[a_id]), place(by_id[b_id])
+        # Bowed outboard so the three runs do not lie on top of each other, and lifted a little
+        # so they read above the floor rather than inside it.
+        side = 1.0 if path == 1 else (-1.0 if path == 2 else 0.0)
+        mid = (a + b) / 2 + Vector((side * size.x * 0.16, 0, size.z * (0.05 if path == 3 else 0.02)))
+        if path == 3:
+            mid += Vector((-size.x * 0.24, 0, 0))
+
+        pts = []
+        for i in range(TRUNK_SEGMENTS + 1):
+            t = i / TRUNK_SEGMENTS
+            u = 1 - t
+            pts.append(u * u * a + 2 * u * t * mid + t * t * b)
+
+        for k in range(TRUNK_SEGMENTS):
+            p0, p1 = pts[k], pts[k + 1]
+            centre = (p0 + p1) / 2
+            direction = p1 - p0
+            length = direction.length
+            if length < 1e-6:
+                continue
+            me = bpy.data.meshes.new(f'TRUNK{path}_S{k}')
+            bm = bmesh.new()
+            bmesh.ops.create_cube(bm, size=1.0)
+            bmesh.ops.scale(bm, vec=(TRUNK_RADIUS * scale, TRUNK_RADIUS * scale, length),
+                            verts=bm.verts)
+            bm.to_mesh(me)
+            bm.free()
+            obj = bpy.data.objects.new(f'TRUNK{path}_S{k}', me)
+            obj.location = centre
+            obj.rotation_mode = 'QUATERNION'
+            obj.rotation_quaternion = direction.to_track_quat('Z', 'Y')
+
+            mat = bpy.data.materials.new(f'trunk{path}_s{k}')
+            mat.use_nodes = True
+            bsdf = mat.node_tree.nodes['Principled BSDF']
+            base = (0.75, 0.25, 0.60, 1.0)
+            bsdf.inputs['Base Color'].default_value = base
+            bsdf.inputs['Emission Color'].default_value = base
+            # Exported lit so the factor survives; the app sets the level, one segment at a time.
+            bsdf.inputs['Emission Strength'].default_value = 1.0
+            bsdf.inputs['Roughness'].default_value = 0.35
+            me.materials.append(mat)
+            bpy.context.scene.collection.objects.link(obj)
+        print(f'  TRUNK{path}: {TRUNK_SEGMENTS} segments')
 
 
 def lamp_faces_check(obj):
@@ -347,6 +422,7 @@ def main(body_path, devices_path, out_path):
         print(f"  {obj.name}: {len(obj.data.polygons)} faces")
 
     spin_wheels()
+    add_trunks(payload, lo, hi, DEVICE_SCALE)
     carve_lamps(lo, hi)
     add_plate(lo, hi, PLATE_TEXT)
 

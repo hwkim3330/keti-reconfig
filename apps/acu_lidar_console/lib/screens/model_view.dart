@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -25,6 +26,12 @@ class ModelVehicleView extends StatefulWidget {
   /// Raises the lamp materials' emissive back to what they were exported with.
   final bool lightsOn;
 
+  /// Whether the trunk segments chase, and what each path's link is doing. The chase runs in the
+  /// page's own animation loop, not from here: twelve JavaScript calls a second into a WebView is
+  /// a cost with nothing to show for it.
+  final bool dataFlow;
+  final Map<int, String> trunkStates;
+
   /// Turntable azimuth in degrees, and the polar angle. Drag still works; this is for when the
   /// same angle has to come back twice -- a photograph of the rig, or handing the tablet over.
   final double orbitDeg;
@@ -39,6 +46,8 @@ class ModelVehicleView extends StatefulWidget {
     this.lightsOn = false,
     this.orbitDeg = 40,
     this.polarDeg = 68,
+    this.dataFlow = false,
+    this.trunkStates = const {},
   });
 
   @override
@@ -157,6 +166,59 @@ window.setWheels = function (on) {
   } catch (e) {}
 };
 
+// The runs between the switches, lit one segment at a time so traffic reads as moving. A static
+// line only says the switches are wired together; a chase says something is going through it, and
+// a run that goes red and stops says the module opened -- which is the demo.
+window.__trunk = { 1: 'unknown', 2: 'unknown', 3: 'unknown' };
+window.__flow = false;
+window.__phase = 0;
+const __TRUNK_SEGS = 9;
+
+function __paintTrunks() {
+  const mv = document.querySelector('model-viewer');
+  if (!mv || !mv.model) return;
+  for (const m of mv.model.materials) {
+    const hit = /^trunk(\\d)_s(\\d+)\$/.exec(m.name || '');
+    if (!hit) continue;
+    const path = +hit[1], seg = +hit[2];
+    const state = window.__trunk[path] || 'unknown';
+    let col = [0.75, 0.25, 0.60], level = 0;
+    if (state === 'down') {
+      col = [0.78, 0.21, 0.18];
+    } else if (window.__flow && state !== 'unknown') {
+      const raw = Math.abs(seg - window.__phase);
+      const d = Math.min(raw, __TRUNK_SEGS - raw);
+      level = Math.max(0, 1 - d / 2.2);
+    }
+    try {
+      m.pbrMetallicRoughness.setBaseColorFactor([col[0], col[1], col[2], 1]);
+      m.setEmissiveFactor([col[0] * level, col[1] * level, col[2] * level]);
+    } catch (e) {}
+  }
+}
+
+window.setTrunkState = function (path, state) {
+  window.__trunk[path] = state;
+  __paintTrunks();
+};
+
+window.setFlow = function (on) {
+  window.__flow = on;
+  if (!on) { __paintTrunks(); return; }
+  if (window.__flowLoop) return;
+  let last = 0;
+  const step = function (t) {
+    if (!window.__flow) { window.__flowLoop = null; __paintTrunks(); return; }
+    if (t - last > 70) {           // about 14 steps a second
+      last = t;
+      window.__phase = (window.__phase + 1) % __TRUNK_SEGS;
+      __paintTrunks();
+    }
+    window.__flowLoop = requestAnimationFrame(step);
+  };
+  window.__flowLoop = requestAnimationFrame(step);
+};
+
 // A turntable. Dragging is still there; this is the same view twice.
 window.setOrbit = function (theta, phi) {
   const mv = document.querySelector('model-viewer');
@@ -222,6 +284,8 @@ document.addEventListener('DOMContentLoaded', function () {
     __applyShell(window.__shell);
     window.setLights(window.__lights);
     window.setWheels(window.__wheels);
+    window.setFlow(window.__flow);
+    __paintTrunks();
     __placePins();
     // The bounds settle a frame or two after load on some builds; a second pass is cheap.
     setTimeout(__placePins, 250);
@@ -237,7 +301,9 @@ document.addEventListener('DOMContentLoaded', function () {
         old.wheelsTurning != widget.wheelsTurning ||
         old.lightsOn != widget.lightsOn ||
         old.orbitDeg != widget.orbitDeg ||
-        old.polarDeg != widget.polarDeg) {
+        old.polarDeg != widget.polarDeg ||
+        old.dataFlow != widget.dataFlow ||
+        !mapEquals(old.trunkStates, widget.trunkStates)) {
       _push();
     }
   }
@@ -250,6 +316,10 @@ document.addEventListener('DOMContentLoaded', function () {
     js.runJavaScript('window.setLights(${widget.lightsOn})');
     js.runJavaScript(
         'window.setOrbit(${widget.orbitDeg.toStringAsFixed(1)}, ${widget.polarDeg.toStringAsFixed(1)})');
+    for (final e in widget.trunkStates.entries) {
+      js.runJavaScript("window.setTrunkState(${e.key}, '${e.value}')");
+    }
+    js.runJavaScript('window.setFlow(${widget.dataFlow})');
   }
 
   @override
@@ -277,7 +347,15 @@ document.addEventListener('DOMContentLoaded', function () {
       relatedJs: _js,
       onWebViewCreated: (c) {
         _web = c;
+        // onWebViewCreated fires before the page has run its scripts, so the first push lands on
+        // functions that do not exist yet and is lost. Two more after the model has had time to
+        // load is the difference between the chase running and the lines sitting there dark.
         _push();
+        for (final delay in const [Duration(milliseconds: 1500), Duration(seconds: 4)]) {
+          Future.delayed(delay, () {
+            if (mounted) _push();
+          });
+        }
       },
     );
   }

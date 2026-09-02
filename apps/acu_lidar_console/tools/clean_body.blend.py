@@ -34,6 +34,54 @@ BASE_COLOR_PX = 1024
 ORM_PX = 512
 
 
+def tidy(obj):
+    """Take the rubbish out of one part.
+
+    The model is a single-skin export with 11,880 non-manifold edges, duplicated shells and
+    zero-area scraps. Left in, they read as the jagged holes and speckle you see through a
+    translucent panel: with alpha blending every interior face shows through the one in front of
+    it. So interior faces go, loose geometry goes, degenerate faces go, and what is left is
+    single-sided -- which is the change that actually cleans up the look, because a back face seen
+    through a translucent front face is exactly the mess.
+    """
+    me = obj.data
+    before = len(me.polygons)
+
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    bmesh.ops.dissolve_degenerate(bm, dist=1e-6, edges=bm.edges)
+    # Faces with no area at all: 4 of the 606 islands were nothing but these.
+    dead = [f for f in bm.faces if f.calc_area() < 1e-9]
+    if dead:
+        bmesh.ops.delete(bm, geom=dead, context='FACES')
+    # Wire and stray vertices left behind by the deletions.
+    loose_v = [v for v in bm.verts if not v.link_faces]
+    if loose_v:
+        bmesh.ops.delete(bm, geom=loose_v, context='VERTS')
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+    # Interior faces, the ones that can only be seen through another face.
+    bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bpy.ops.mesh.select_interior_faces()
+    bpy.ops.mesh.delete(type='FACE')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    bpy.ops.object.shade_auto_smooth(angle=math.radians(35))
+    print(f'    tidied {obj.name}: {before} -> {len(obj.data.polygons)} faces')
+
+
 def classify(obj):
     """Name a loose part from where it sits and how flat it is.
 
@@ -119,12 +167,16 @@ def main(src, dst):
         bm.to_mesh(joined.data)
         bm.free()
         joined.data.update()
+        tidy(joined)
 
         # One material per part, all pointing at the same textures. model-viewer can address a
         # material but not a node, so this is what lets the shell go translucent on its own.
         if joined.data.materials:
             copy = joined.data.materials[0].copy()
             copy.name = f'part_{name}'
+            # Single-sided. Exported doubleSided=false, so a translucent panel stops showing its
+            # own inside; this is what turns the speckled mess into a clean pane of glass.
+            copy.use_backface_culling = True
             joined.data.materials[0] = copy
         merged.append(joined)
 

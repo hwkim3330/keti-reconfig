@@ -29,6 +29,7 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
   bool _lights = false;
   double _orbit = 40;
   double _polar = 68;
+  bool _flow = true;
   VehicleViewMode _mode = VehicleViewMode.model;
 
   void _select(String? id) {
@@ -67,6 +68,17 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                             lightsOn: _lights,
                             orbitDeg: _orbit,
                             polarDeg: _polar,
+                            dataFlow: _flow,
+                            trunkStates: {
+                              for (final t in rig.trunks)
+                                if (t.path != null)
+                                  t.path!: switch (rig.snapshot.link('path${t.path}')) {
+                                    LinkState.down => 'down',
+                                    LinkState.up || LinkState.degraded => 'up',
+                                    LinkState.unknown =>
+                                      rig.mode == RigMode.reference ? 'up' : 'unknown',
+                                  },
+                            },
                           ),
                           RepaintBoundary(
                             child: VehicleView(
@@ -109,6 +121,8 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                             const SizedBox(height: 10),
                             _ToggleCapsule(
                               items: [
+                                (Icons.bolt_outlined, 'Data', _flow,
+                                    () => setState(() => _flow = !_flow)),
                                 (Icons.rotate_right, 'Wheels', _wheels,
                                     () => setState(() => _wheels = !_wheels)),
                                 (Icons.lightbulb_outline, 'Lights', _lights,
