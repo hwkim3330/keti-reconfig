@@ -60,6 +60,21 @@
         <button class="tesla start" id="btn-start"><span class="glyph">▶</span><span class="lbl">START</span></button>
       </section>
       <div class="msg" id="msg"></div>
+
+      <section class="card cbs-card">
+        <div class="section-head"><span>CBS · CREDIT-BASED SHAPER</span><span class="cbs-hint" id="cbs-hint">reserve a queue on an egress port</span></div>
+        <div class="cbs-grid">
+          <label class="cbs-f">Switch<select id="cbs-sw"></select></label>
+          <label class="cbs-f">Port<span class="pre">Gi 1/</span><input id="cbs-port" type="number" min="1" max="10" value="1"></label>
+          <label class="cbs-f">Queue<input id="cbs-q" type="number" min="0" max="7" value="6"></label>
+          <label class="cbs-f">Rate<input id="cbs-mbps" type="number" min="1" max="1000" value="250"><span class="pre">Mbps</span></label>
+        </div>
+        <div class="cbs-actions">
+          <button class="cbs-btn apply" id="cbs-apply">Apply CBS</button>
+          <button class="cbs-btn clear" id="cbs-clear">Clear</button>
+        </div>
+        <div class="cbs-result" id="cbs-result"></div>
+      </section>
     </section>
 
     <!-- VIDEO -->

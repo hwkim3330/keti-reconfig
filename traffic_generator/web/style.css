@@ -180,7 +180,27 @@ body {
 .kiosk-locked .tesla.tsn { display: none; }
 
 /* ---- chart (fills the Monitor tab under the gauges) ---- */
-.chart-card { flex: 1 1 auto; min-height: 200px; display: flex; flex-direction: column; gap: 0.4rem; }
+/* shrunk from flex-grow to a fixed strip so the CBS panel gets room below it */
+.chart-card { flex: 0 0 auto; height: 132px; display: flex; flex-direction: column; gap: 0.4rem; }
+
+/* ---- CBS control panel (Monitor tab, under the chart) ---- */
+.cbs-card { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0.55rem; }
+.cbs-card .section-head { display: flex; justify-content: space-between; align-items: baseline; }
+.cbs-hint { font-size: 0.68rem; color: var(--ink-2); font-weight: 600; }
+.cbs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.7rem; }
+.cbs-f { display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; font-weight: 700; color: var(--ink-2); }
+.cbs-f .pre { color: var(--ink-2); font-weight: 600; }
+.cbs-f input, .cbs-f select { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.82rem; font-weight: 700;
+  color: var(--ink); background: var(--inset); border: 1px solid var(--hair); border-radius: 0.5rem; padding: 0.34rem 0.5rem; }
+.cbs-actions { display: flex; gap: 0.5rem; }
+.cbs-btn { flex: 1 1 auto; font: inherit; font-weight: 800; font-size: 0.86rem; padding: 0.6rem; border-radius: 0.7rem;
+  border: 0; cursor: pointer; transition: transform .06s, filter .15s; }
+.cbs-btn:active { transform: scale(0.98); }
+.cbs-btn.apply { background: linear-gradient(180deg, #2fbf6a, #1f9c52); color: #fff; }
+.cbs-btn.clear { background: var(--inset); color: var(--ink); border: 1px solid var(--hair); }
+.cbs-result { min-height: 1rem; font-size: 0.72rem; font-weight: 600; color: var(--ink-2); }
+.cbs-result.ok { color: #1f9c52; }
+.cbs-result.err { color: #d9483b; }
 .chart-legend { display: flex; gap: 1rem; }
 .chart-legend .lg { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: var(--ink-2); font-weight: 600; }
 .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; vertical-align: middle; margin-right: 4px; }

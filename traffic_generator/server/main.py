@@ -305,6 +305,21 @@ async def api_d10_rpc(request: Request, host: str | None = None) -> dict:
     return d10.rpc(body, host=host)
 
 
+@app.post("/api/d10/cbs")
+def api_d10_cbs(host: str, port: int, queue: int, mbps: int, on: bool = True) -> dict:
+    """Reserve (or clear) an egress queue's bandwidth with the credit-based shaper.
+    Same 802.1Qav call the tablet issues over BLE, exposed to the generator UI so
+    CBS can be tried at any point of contention. Cir is in kbps; off parks it low."""
+    body = {
+        "jsonrpc": "2.0", "id": 1,
+        "method": "qos.config.interface.queueShaper.set",
+        "params": [f"Gi 1/{port}", queue,
+                   {"Enable": on, "Credit": on, "Cir": (mbps * 1000) if on else 500,
+                    "RateType": "line", "Excess": False}],
+    }
+    return d10.rpc(body, host=host)
+
+
 @app.post("/api/start")
 def api_start() -> dict:
     if runner.running:

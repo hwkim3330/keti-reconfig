@@ -365,6 +365,40 @@ async function boot() {
   $("btn-add").onclick = () => { state.config.streams.push(newStream()); pushConfig(); };
   $("btn-save").onclick = saveCurrentPreset;
 
+  // --- CBS panel: reserve/clear an egress queue's bandwidth on a switch (802.1Qav) ---
+  const cbsRoles = { "192.168.100.2": "B · generation", "192.168.100.4": "C · recovery" };
+  try {
+    const d = await api("/api/d10/switches");
+    const sel = $("cbs-sw");
+    sel.innerHTML = "";
+    (d.switches || []).forEach((ip) => {
+      const o = document.createElement("option");
+      o.value = ip; o.textContent = (cbsRoles[ip] || ip) + "  (" + ip + ")";
+      sel.appendChild(o);
+    });
+    // C (.4) is the video egress switch — default CBS there when present
+    if ([...sel.options].some((o) => o.value === "192.168.100.4")) sel.value = "192.168.100.4";
+    else if (d.default) sel.value = d.default;
+  } catch (e) { $("cbs-result").textContent = "switch list unavailable: " + e.message; }
+
+  async function applyCbs(on) {
+    const host = $("cbs-sw").value;
+    const port = +$("cbs-port").value, q = +$("cbs-q").value, mbps = +$("cbs-mbps").value;
+    const r = $("cbs-result");
+    r.className = "cbs-result"; r.textContent = "applying…";
+    try {
+      const res = await api(`/api/d10/cbs?host=${host}&port=${port}&queue=${q}&mbps=${mbps}&on=${on}`,
+                            { method: "POST" });
+      const err = res && (res.error || (Array.isArray(res) && (res.find((x) => x && x.error) || {}).error));
+      if (err) throw new Error(err.message || JSON.stringify(err));
+      r.className = "cbs-result ok";
+      r.textContent = on ? `CBS on Gi 1/${port} q${q} = ${mbps} Mbps reserved`
+                         : `CBS cleared on Gi 1/${port} q${q}`;
+    } catch (e) { r.className = "cbs-result err"; r.textContent = "failed: " + e.message; }
+  }
+  $("cbs-apply").onclick = () => applyCbs(true);
+  $("cbs-clear").onclick = () => applyCbs(false);
+
   // tabs: Monitor / Video / Config
   document.querySelectorAll(".tabbtn").forEach((b) => {
     b.onclick = () => {
