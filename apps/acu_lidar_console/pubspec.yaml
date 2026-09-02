@@ -27,4 +27,4 @@ flutter:
   assets:
     - assets/ref/
     - assets/keti_logo.png
-    - assets/roii_reconfig.glb
+    - assets/roii_body.glb

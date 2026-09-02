@@ -3,6 +3,7 @@ import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/reference.dart';
+import '../widgets/vehicle_plan.dart' show heightOf;
 
 /// The glTF body from the KETI reconfig console, with the ACU / LiDAR devices and the three TSN
 /// switches pinned onto it.
@@ -39,32 +40,21 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
   @override
   bool get wantKeepAlive => true;
 
-  /// Hotspot anchors in the glTF's own coordinate space. Read off the model rather than guessed:
-  /// its bounding box measures 22.1 x 21.7 x 40.0 about a centre of (-1.94, 11.28, -0.08), so
-  /// ground is y ~ 0.4, the roof y ~ 22, the front bumper z ~ +20 and the rear z ~ -20. The first
-  /// pass used the reconfig console's numbers and put every pin in a heap at mid-body, because
-  /// those were tuned against the other variant of this model.
-  static const _anchors = <String, String>{
-    'hb_front': '0m 4.5m 19m',
-    'hb_rear': '0m 4.5m -19m',
-    'fk_front': '0m 20.5m 8m',
-    'fk_rear': '0m 20.5m -8m',
-    'lidar_lh': '-8.8m 19m 0m',
-    'lidar_rh': '8.8m 19m 0m',
-    'acu_it': '3.5m 3m -14m',
-    'acu_no': '-3.5m 3m -14m',
-    'display': '0m 12m 14m',
-    // The KETI backbone: the front pair either side of the forward compartment, and the third
-    // switch pulled forward off the rear bulkhead to sit near the middle of the vehicle.
-    'tsn_fa': '5m 4m 11m',
-    'tsn_fb': '-5m 4m 11m',
-    'tsn_r': '0m 4m -1m',
-  };
+  /// Which devices get a pin. The cameras are left off: ten of them on one shuttle is a screen
+  /// of overlapping tags, and they are named in the port bar and the inspector instead.
+  static const _pinned = <String>[
+    'hb_front', 'hb_rear', 'fk_front', 'fk_rear', 'lidar_lh', 'lidar_rh',
+    'acu_it', 'acu_no', 'display', 'tsn_fa', 'tsn_fb', 'tsn_r',
+  ];
 
+  /// Hotspots carry normalised coordinates, not model ones, and the page resolves them against
+  /// whatever body is loaded. Hard-coded metres had to be re-probed every time the model changed
+  /// and silently put every pin in a heap when they were not; this way the Model view and the 3D
+  /// view read the same numbers out of `reference.dart` and cannot drift apart.
   String get _hotspotHtml {
     final b = StringBuffer();
-    for (final e in _anchors.entries) {
-      final n = nodeById(e.key);
+    for (final id in _pinned) {
+      final n = nodeById(id);
       if (n == null) continue;
       final cls = switch (n.kind) {
         NodeKind.lidar => 'lidar',
@@ -74,8 +64,9 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
       };
       final label = n.kind == NodeKind.lidar ? n.name.replaceAll(' · ', ' ') : n.name;
       b.write(
-        '<button class="hs $cls" slot="hotspot-${e.key}" data-position="${e.value}" '
-        'data-normal="0 1 0"><i></i><span>$label</span></button>',
+        '<button class="hs $cls" slot="hotspot-$id" data-position="0m 0m 0m" '
+        'data-normal="0 1 0" data-nx="${n.pos.dx}" data-ny="${n.pos.dy}" '
+        'data-nz="${heightOf(n)}"><i></i><span>$label</span></button>',
       );
     }
     return b.toString();
@@ -121,10 +112,52 @@ function __applyShell(a) {
   }
 }
 window.setShellOpacity = function (a) { window.__shell = a; __applyShell(a); };
+
+// Resolve the normalised hotspot coordinates against the body actually loaded: x is lateral
+// (-1 left .. +1 right), y runs 0 at the front bumper to 1 at the rear, z is height 0..1.
+function __centre(mv) {
+  // getBoundingBoxCenter is not in every model-viewer build. getCameraTarget returns the same
+  // point while cameraTarget is auto, which it is. Without the fallback the whole function threw
+  // and every pin stayed at 0 0 0 -- twelve labels stacked on one spot, which looks exactly like
+  // one label.
+  try {
+    if (typeof mv.getBoundingBoxCenter === 'function') return mv.getBoundingBoxCenter();
+  } catch (e) {}
+  return mv.getCameraTarget();
+}
+function __placePins() {
+  const mv = document.querySelector('model-viewer');
+  if (!mv || !mv.model) return;
+  const d = mv.getDimensions();
+  const c = __centre(mv);
+  if (!d || !c) return;
+  for (const el of mv.querySelectorAll('.hs')) {
+    const nx = parseFloat(el.dataset.nx), ny = parseFloat(el.dataset.ny),
+          nz = parseFloat(el.dataset.nz);
+    if (isNaN(nx) || isNaN(ny) || isNaN(nz)) continue;
+    const x = c.x + nx * d.x / 2;
+    const y = (c.y - d.y / 2) + nz * d.y;
+    const z = (c.z + d.z / 2) - ny * d.z;
+    const pos = x.toFixed(3) + 'm ' + y.toFixed(3) + 'm ' + z.toFixed(3) + 'm';
+    el.dataset.position = pos;
+    // Setting the attribute alone is not enough: model-viewer reads a hotspot's position when
+    // the slot is created and only moves it through updateHotspot. Without this every pin stayed
+    // where it was born, which was 0 0 0 -- twelve labels on one spot, indistinguishable from one.
+    if (typeof mv.updateHotspot === 'function') {
+      mv.updateHotspot({ name: el.slot, position: pos, normal: '0 1 0' });
+    }
+  }
+}
 document.addEventListener('DOMContentLoaded', function () {
   const mv = document.querySelector('model-viewer');
   if (!mv) return;
-  mv.addEventListener('load', function () { __applyShell(window.__shell); });
+  mv.addEventListener('load', function () {
+    __applyShell(window.__shell);
+    __placePins();
+    // The bounds settle a frame or two after load on some builds; a second pass is cheap.
+    setTimeout(__placePins, 250);
+    setTimeout(__placePins, 1200);
+  });
 });
 ''';
 
@@ -144,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function () {
       key: const ValueKey('acu_lidar_model'),
       backgroundColor: const Color(0xFFF6F8FC),
       id: 'vehicle',
-      src: 'assets/roii_reconfig.glb',
+      src: 'assets/roii_body.glb',
       alt: 'Shuttle body with the ACU, LiDAR and TSN switch positions pinned on',
       cameraControls: true,
       // Nothing on this view moves on its own. A console that drifts its camera or waves a

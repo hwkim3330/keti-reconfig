@@ -49,6 +49,35 @@ LiDARs. Wire colours are drawn as colour, not only named.
 **Sheets** — the source images, zoomable, with the superseded revisions marked as such, under a
 note saying where the sheets disagree.
 
+## The vehicle model
+
+`assets/roii_reconfig.glb` turned out not to be a GLB. It is a glTF JSON document with a base64
+data-URI buffer, written by THREE.GLTFExporter out of the reconfig console's own scene. Of its
+110 meshes exactly one is the vehicle — `textured_meshobj`, material `roii`, two baked JPEGs. The
+other 109 are that project's overlay: ZC / ACU / TCU / Path boxes, a wireframe twin per device,
+port stubs, connection tubes, and three `InlineESP` nodes named ESP_AB, ESP_AR and ESP_BR — the
+three inter-switch modules, which is independent confirmation of the topology this console draws.
+
+So the body was carrying another project's answer underneath ours, and a third of the file was
+base64. `tools/repack_roii_body.py` keeps the body, prunes every accessor, view, texture and
+image it does not use, and writes a real binary GLB:
+
+```
+python3 tools/repack_roii_body.py assets/roii_reconfig.glb assets/roii_body.glb
+# kept 1 of 110 meshes, 1 of 110 materials, 40000 triangles
+# 2.08 MB binary GLB (was 3.68 MB JSON)
+```
+
+Hotspots are placed from normalised coordinates — the same `pos` and height the native 3D view
+reads out of `reference.dart` — resolved at load time against whatever body is loaded. Hard-coded
+metres had to be re-probed every time the model changed and put every pin in a heap when they
+were not.
+
+If the body is ever rebuilt in Blender, what this app needs from it is: a binary `.glb`; the body
+and nothing else, or named nodes (`BODY`, `GLASS`, `WHEEL`, `INTERIOR`) so parts can be hidden
+instead of every material being alpha-blended at once; front on +Z, up on +Y; and real-world
+scale. Triangle count is not the problem — the body is 40 k.
+
 ## Rules this console keeps
 
 *A value is either sourced or visibly marked as not sourced.* Link rates the sheets never state
