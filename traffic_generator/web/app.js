@@ -399,6 +399,24 @@ async function boot() {
   $("cbs-apply").onclick = () => applyCbs(true);
   $("cbs-clear").onclick = () => applyCbs(false);
 
+  // --- quick flood buttons: load a video-breaking preset and start it in one tap ---
+  async function quickFlood(preset, btn) {
+    btn.disabled = true;
+    try {
+      if (state.running) {                    // preset load is refused while running
+        await api("/api/stop", { method: "POST" }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      await api(`/api/preset/${preset}`, { method: "POST" });
+      await api("/api/start", { method: "POST" });
+      showMsg("flood: " + preset);
+    } catch (e) { showMsg(e.message, true); }
+    finally { btn.disabled = false; }
+  }
+  document.querySelectorAll(".flood-btn").forEach((b) => {
+    b.onclick = () => quickFlood(b.dataset.preset, b);
+  });
+
   // tabs: Monitor / Video / Config
   document.querySelectorAll(".tabbtn").forEach((b) => {
     b.onclick = () => {

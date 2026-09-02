@@ -201,6 +201,19 @@ body {
 .cbs-result { min-height: 1rem; font-size: 0.72rem; font-weight: 600; color: var(--ink-2); }
 .cbs-result.ok { color: #1f9c52; }
 .cbs-result.err { color: #d9483b; }
+
+/* ---- quick flood buttons (above START): break the video on demand ---- */
+.flood-actions { display: flex; gap: 0.55rem; }
+.flood-btn { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  font: inherit; cursor: pointer; padding: 0.6rem 0.5rem; border-radius: 0.8rem;
+  border: 1px solid var(--hair); background: var(--inset); color: var(--ink);
+  transition: transform .06s, filter .15s; }
+.flood-btn:active { transform: scale(0.98); }
+.flood-btn:disabled { opacity: 0.5; }
+.flood-btn .fb-t { font-weight: 800; font-size: 0.92rem; letter-spacing: 0.01em; }
+.flood-btn .fb-s { font-weight: 600; font-size: 0.64rem; color: var(--ink-2); }
+.flood-btn.hard { border-color: #d9483b55; }
+.flood-btn.hard .fb-t { color: #d9483b; }
 .chart-legend { display: flex; gap: 1rem; }
 .chart-legend .lg { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: var(--ink-2); font-weight: 600; }
 .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; vertical-align: middle; margin-right: 4px; }
