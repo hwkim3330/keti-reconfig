@@ -1,7 +1,8 @@
 'use strict';
-// KETI TSN Console — one UI over the flood generator (this Pi's pktgen API) and
-// the Kontron D10 switches (WebStaX JSON-RPC, proxied by the backend).
-//   switch calls -> /api/d10/rpc?host=<sw>   flood calls -> /api/start etc.
+// KETI TSN Reconfig Console — glanceable HOME demo + ADVANCED engineering.
+// flood calls -> /api/start etc (this Pi's pktgen);  switch calls -> /api/d10/rpc?host=<sw>
+// Demo narrative: a TC7 flood OUTRANKS the best-effort video and starves it;
+// CBS reserving the video's queue is the action that PROTECTS it.
 
 const $ = (id) => document.getElementById(id);
 function toast(msg, kind = '') {
@@ -10,8 +11,13 @@ function toast(msg, kind = '') {
   $('toastTray').appendChild(t); setTimeout(() => t.remove(), 3500);
 }
 
+// The flood the HOME buttons fire: small-frame, VLAN100 PCP7 -> TC7 (outranks video).
+const FLOOD_PRESET = 'flood_hi_512';
+const FLOOD_TC = 'TC7';
+
 // ── switch JSON-RPC ─────────────────────────────────────────────────────────
-let RPCID = 1, HOST = null, PORTS = [];
+let RPCID = 1, HOST = null, PORTS = [], SWITCHES = [];
+let cbsProtected = false;
 async function rpc(method, params = []) {
   const r = await fetch('/api/d10/rpc?host=' + encodeURIComponent(HOST || ''), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -22,35 +28,55 @@ async function rpc(method, params = []) {
   return j.result;
 }
 
-// ── tabs ────────────────────────────────────────────────────────────────────
-document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-  document.querySelectorAll('.view').forEach((x) => x.classList.remove('active'));
+// ── top-level nav (Home / Advanced) + advanced sub-tabs ─────────────────────
+document.querySelectorAll('.navtab').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.navtab').forEach((x) => x.classList.remove('active'));
+  document.querySelectorAll('.topview').forEach((x) => x.classList.remove('active'));
+  b.classList.add('active'); $(b.dataset.view).classList.add('active');
+  window.scrollTo(0, 0);
+}));
+document.querySelectorAll('.subtab').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.subtab').forEach((x) => x.classList.remove('active'));
+  document.querySelectorAll('.subview').forEach((x) => x.classList.remove('active'));
   b.classList.add('active'); $(b.dataset.view).classList.add('active');
 }));
 
-// ── switches + health ───────────────────────────────────────────────────────
+// ── switches + health (segmented A/B/C selector) ────────────────────────────
 async function initSwitches() {
   const { switches, default: def } = await (await fetch('/api/d10/switches')).json();
-  HOST = def || switches[0];
-  const sel = $('switchSel');
-  sel.innerHTML = switches.map((s, i) => `<option value="${s}">SW${i + 1} · ${s}</option>`).join('');
-  sel.value = HOST;
-  sel.addEventListener('change', async () => { HOST = sel.value; try { await loadPorts(); fillFrerPorts(); } catch {} });
+  SWITCHES = switches; HOST = def || switches[0];
+  const names = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const seg = $('switchSeg');
+  seg.innerHTML = switches.map((s, i) =>
+    `<button class="seg-btn" data-host="${s}"><span class="seg-a">${names[i] || ('S' + (i + 1))}</span>` +
+    `<span class="seg-ip mono">.${s.split('.').pop()}</span><span class="seg-dot"></span></button>`).join('');
+  seg.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', async () => {
+    HOST = b.dataset.host; markSwitch();
+    try { await loadPorts(); fillFrerPorts(); } catch {}
+  }));
+  markSwitch();
+}
+function markSwitch() {
+  document.querySelectorAll('#switchSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.host === HOST));
+  const idx = SWITCHES.indexOf(HOST); const names = ['A', 'B', 'C', 'D', 'E', 'F'];
+  if ($('tLinkName')) $('tLinkName').textContent = (names[idx] || '?') + ' .' + (HOST || '').split('.').pop();
 }
 async function health() {
   try {
     const h = await (await fetch('/api/d10/health')).json();
-    const st = (h.switches || {})[HOST];
+    const map = h.switches || {};
+    const st = map[HOST];
     const pill = $('d10Link');
-    pill.textContent = st === 'up' ? 'online' : (st || 'offline');
+    pill.textContent = st === 'up' ? 'ONLINE' : (st ? String(st).toUpperCase() : 'OFFLINE');
     pill.className = 'pill ' + (st === 'up' ? 'up' : 'down');
-    const sel = $('switchSel');
-    [...sel.options].forEach((o) => {
-      const s = (h.switches || {})[o.value];
-      o.textContent = o.textContent.replace(/ [●○]$/, '') + (s === 'up' ? ' ●' : ' ○');
+    document.querySelectorAll('#switchSeg .seg-btn').forEach((b) => {
+      const s = map[b.dataset.host];
+      b.classList.toggle('online', s === 'up');
+      b.classList.toggle('offline', s !== 'up');
     });
-  } catch { $('d10Link').textContent = 'offline'; $('d10Link').className = 'pill down'; }
+    if ($('tLink')) $('tLink').textContent = st === 'up' ? 'ONLINE' : 'OFFLINE';
+    const tile = $('tLinkTile'); if (tile) tile.className = 'tile ' + (st === 'up' ? 'ok' : 'bad');
+  } catch { $('d10Link').textContent = 'OFFLINE'; $('d10Link').className = 'pill down'; }
 }
 
 // ── ports ───────────────────────────────────────────────────────────────────
@@ -61,7 +87,8 @@ function prettySpeed(s) {
 async function loadPorts() {
   const res = await rpc('port.status.get', []);          // [{key,val}]
   PORTS = res.map((e) => e.key);
-  const grid = $('portGrid'); if (grid) { grid.innerHTML = '';
+  const grid = $('portGrid'); if (grid) {
+    grid.innerHTML = '';
     res.forEach((e) => {
       const up = e.val && (e.val.Link === true || e.val.Link === 'up');
       const d = document.createElement('div');
@@ -77,13 +104,26 @@ async function loadPorts() {
   });
 }
 
-// ── Traffic: flood generator (this Pi's pktgen API) ─────────────────────────
+// ── HOME: big demo actions ──────────────────────────────────────────────────
+async function homeFlood() {
+  try {
+    await fetch('/api/preset/' + encodeURIComponent(FLOOD_PRESET), { method: 'POST' });
+    await fetch('/api/start', { method: 'POST' });
+    const g = $('genPreset'); if (g && [...g.options].some((o) => o.value === FLOOD_PRESET)) g.value = FLOOD_PRESET;
+    toast('FLOOD ON · ' + FLOOD_TC + ' storm — video will degrade', 'err');
+  } catch (e) { toast('flood: ' + e.message, 'err'); }
+}
+async function homeStop() {
+  try { await fetch('/api/stop', { method: 'POST' }); toast('flood OFF', ''); } catch (e) { toast(e.message, 'err'); }
+}
+
+// ── Traffic: flood generator (advanced detail) ──────────────────────────────
 async function genInit() {
   try {
     const sys = await (await fetch('/api/system')).json();
     $('genPreset').innerHTML = Object.entries(sys.presets || {})
       .map(([k, v]) => `<option value="${k}">${v.label || k}</option>`).join('');
-    if ([...$('genPreset').options].some((o) => o.value === 'line_rate_1500')) $('genPreset').value = 'line_rate_1500';
+    if ([...$('genPreset').options].some((o) => o.value === FLOOD_PRESET)) $('genPreset').value = FLOOD_PRESET;
   } catch {}
 }
 async function genStart() {
@@ -102,49 +142,74 @@ async function genPoll() {
   try {
     const s = await (await fetch('/api/status')).json();
     const last = s.last || {}, mbps = Math.round(last.mbps || 0), kpps = Math.round((last.pps || 0) / 1000);
-    $('genMbps').textContent = mbps; $('genKpps').textContent = kpps;
-    $('genSent').textContent = (last.sent_packets || 0).toLocaleString();
-    $('genState').textContent = s.running ? 'RUNNING' : 'idle';
-    $('genState').className = 'pill ' + (s.running ? 'up' : '');
+    if ($('genMbps')) $('genMbps').textContent = mbps;
+    if ($('genKpps')) $('genKpps').textContent = kpps;
+    if ($('genSent')) $('genSent').textContent = (last.sent_packets || 0).toLocaleString();
+    if ($('genState')) { $('genState').textContent = s.running ? 'RUNNING' : 'idle'; $('genState').className = 'pill ' + (s.running ? 'up' : ''); }
+    // home flood tile
+    if ($('tFloodMbps')) $('tFloodMbps').textContent = mbps;
+    if ($('tFloodPps')) $('tFloodPps').textContent = kpps;
+    if ($('tFloodState')) $('tFloodState').textContent = s.running ? ('RUNNING · ' + FLOOD_TC) : 'IDLE';
+    const ft = $('tFloodTile'); if (ft) ft.className = 'tile ' + (s.running ? 'warn' : 'idle');
     genHist.push(mbps); if (genHist.length > 120) genHist.shift();
     drawSpark('genChart', genHist, 1000);
   } catch {}
 }
 function drawSpark(id, data, max) {
-  const c = $(id); if (!c) return; const ctx = c.getContext('2d');
+  const c = $(id); if (!c || !c.clientWidth) return; const ctx = c.getContext('2d');
   const w = c.width = c.clientWidth, h = c.height;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--accent') || '#7C7CFF';
+  ctx.strokeStyle = (getComputedStyle(document.body).getPropertyValue('--accent') || '#3B9EFF').trim();
   ctx.lineWidth = 2; ctx.beginPath();
   data.forEach((v, i) => { const x = (i / Math.max(data.length - 1, 1)) * w, y = h - (Math.min(v, max) / max) * (h - 4) - 2; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
   ctx.stroke();
 }
 
-// ── Video receiver (Pi2 state, best-effort) ─────────────────────────────────
+// ── Video receiver (best-effort / TC0 — the stream under attack) ─────────────
 async function vidPoll() {
   try {
     const d = await (await fetch('/api/video/state')).json();
-    $('vidRx').textContent = (d.kbps ? (d.kbps / 1000).toFixed(1) : '—');
-    $('vidLink').textContent = d.link_rx_mbps != null ? Math.round(d.link_rx_mbps) : '—';
-    $('vidUp').textContent = (d.receiving || d.recv) ? 'yes' : 'no';
+    const recv = !!(d.receiving || d.recv);
+    const rx = d.kbps ? (d.kbps / 1000).toFixed(1) : '0.0';
+    // advanced detail
+    if ($('vidRx')) $('vidRx').textContent = d.kbps ? (d.kbps / 1000).toFixed(1) : '—';
+    if ($('vidLink')) $('vidLink').textContent = d.link_rx_mbps != null ? Math.round(d.link_rx_mbps) : '—';
+    if ($('vidUp')) $('vidUp').textContent = recv ? 'yes' : 'no';
+    // home video tile — DEGRADES under the flood, RECOVERS once CBS reserves its queue
+    const state = recv ? (cbsProtected ? 'PROTECTED' : 'LIVE') : 'DEGRADED';
+    if ($('tVidState')) $('tVidState').textContent = state;
+    if ($('tVidRx')) $('tVidRx').textContent = rx;
+    const tile = $('tVidTile'); if (tile) tile.className = 'tile ' + (recv ? 'ok' : 'bad');
   } catch {}
 }
 
-// ── Demo: CBS protect on the video egress port ──────────────────────────────
-function fillDemoQueues() { $('demoQueue').innerHTML = Array.from({ length: 8 }, (_, q) => `<option value="${q}">Q${q}</option>`).join(''); $('demoQueue').value = 6; }
+// ── CBS protect on the video egress queue (HOME + shared) ───────────────────
+function fillDemoQueues() {
+  $('demoQueue').innerHTML = Array.from({ length: 8 }, (_, q) => `<option value="${q}">Q${q} · TC${q}</option>`).join('');
+  $('demoQueue').value = 6;
+}
 async function demoProtect() {
   const port = $('demoPort').value, q = +$('demoQueue').value, mbps = +$('demoCir').value || 250;
   try {
     await rpc('qos.config.interface.queueShaper.set', [port, q, { Enable: true, Credit: true, Cir: mbps * 1000, RateType: 'line', Excess: false }]);
-    $('demoStatus').textContent = `PROTECTED · CBS reserves ${mbps} Mbps for ${port} Q${q}`;
+    cbsProtected = true;
+    $('demoStatus').textContent = `PROTECTED · CBS reserves ${mbps} Mbps on ${port} Q${q} (TC${q})`;
     $('demoStatus').className = 'demo-status protected';
-    $('demoHint').textContent = `queueShaper.set(${port}, ${q}, {Enable, Credit, Cir:${mbps * 1000}})`;
-    toast('CBS protect on', 'ok');
+    $('demoHint').textContent = `queueShaper.set(${port}, ${q}, {Enable, Credit, Cir:${mbps * 1000}}) — the video survives the ${FLOOD_TC} flood`;
+    toast('CBS protect ON · Q' + q + ' (TC' + q + ')', 'ok');
+    vidPoll();
   } catch (e) { toast(e.message, 'err'); }
 }
 async function demoOff() {
   const port = $('demoPort').value, q = +$('demoQueue').value;
-  try { await rpc('qos.config.interface.queueShaper.set', [port, q, { Enable: false, Credit: false, Cir: 500, RateType: 'line', Excess: false }]); $('demoStatus').textContent = '— CBS off —'; $('demoStatus').className = 'demo-status degraded'; toast('CBS off', ''); } catch (e) { toast(e.message, 'err'); }
+  try {
+    await rpc('qos.config.interface.queueShaper.set', [port, q, { Enable: false, Credit: false, Cir: 500, RateType: 'line', Excess: false }]);
+    cbsProtected = false;
+    $('demoStatus').textContent = 'CBS off — the higher-priority flood starves the video';
+    $('demoStatus').className = 'demo-status degraded';
+    toast('CBS off', '');
+    vidPoll();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 // ── CBS tab ─────────────────────────────────────────────────────────────────
@@ -153,10 +218,10 @@ async function cbsLoad() {
   for (let q = 0; q < 8; q++) {
     let s = {}; try { s = await rpc('qos.config.interface.queueShaper.get', [port, q]); } catch {}
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="mono">Q${q}</td><td><input type="checkbox" ${s.Enable ? 'checked' : ''} data-f="Enable"></td><td><input type="checkbox" ${s.Credit ? 'checked' : ''} data-f="Credit"></td><td><input type="number" value="${s.Cir ?? 0}" style="width:90px" data-f="Cir"></td><td><select data-f="RateType"><option ${s.RateType === 'line' ? 'selected' : ''}>line</option><option ${s.RateType === 'data' ? 'selected' : ''}>data</option></select></td><td><input type="checkbox" ${s.Excess ? 'checked' : ''} data-f="Excess"></td><td><button class="small">Set</button></td>`;
+    tr.innerHTML = `<td class="mono">Q${q} · TC${q}</td><td><input type="checkbox" ${s.Enable ? 'checked' : ''} data-f="Enable"></td><td><input type="checkbox" ${s.Credit ? 'checked' : ''} data-f="Credit"></td><td><input type="number" value="${s.Cir ?? 0}" style="width:96px" data-f="Cir"></td><td><select data-f="RateType"><option ${s.RateType === 'line' ? 'selected' : ''}>line</option><option ${s.RateType === 'data' ? 'selected' : ''}>data</option></select></td><td><input type="checkbox" ${s.Excess ? 'checked' : ''} data-f="Excess"></td><td><button class="small">Set</button></td>`;
     tr.querySelector('button').addEventListener('click', async () => {
       const g = (f) => tr.querySelector(`[data-f="${f}"]`);
-      try { await rpc('qos.config.interface.queueShaper.set', [port, q, { Enable: g('Enable').checked, Credit: g('Credit').checked, Cir: +g('Cir').value || 0, RateType: g('RateType').value, Excess: g('Excess').checked }]); toast(`CBS ${port} Q${q}`, 'ok'); } catch (e) { toast(e.message, 'err'); }
+      try { await rpc('qos.config.interface.queueShaper.set', [port, q, { Enable: g('Enable').checked, Credit: g('Credit').checked, Cir: +g('Cir').value || 0, RateType: g('RateType').value, Excess: g('Excess').checked }]); toast(`CBS ${port} Q${q} (TC${q})`, 'ok'); } catch (e) { toast(e.message, 'err'); }
     });
     body.appendChild(tr);
   }
@@ -170,7 +235,7 @@ async function tasLoad() {
   for (let i = 0; i < Math.max(+$('tasLen').value || 0, 2); i++) {
     let g = {}; try { g = await rpc('tsn.config.interface.tas.gclEntry.get', [port, i]); } catch {}
     const tr = document.createElement('tr'); tr.dataset.idx = i;
-    tr.innerHTML = `<td class="mono">${i}</td><td><input value="${g.GateState ?? 'ff'}" style="width:80px" data-f="GateState"></td><td><input type="number" value="${g.TimeInterval ?? 0}" style="width:130px" data-f="TimeInterval"></td>`;
+    tr.innerHTML = `<td class="mono">${i}</td><td><input value="${g.GateState ?? 'ff'}" style="width:96px" data-f="GateState"></td><td><input type="number" value="${g.TimeInterval ?? 0}" style="width:130px" data-f="TimeInterval"></td>`;
     body.appendChild(tr);
   }
 }
@@ -184,7 +249,7 @@ async function tasApply() {
 }
 
 // ── FRER tab ────────────────────────────────────────────────────────────────
-function fillFrerPorts() { const box = $('frerPorts'); if (box) box.innerHTML = PORTS.map((p) => `<label class="port" style="cursor:pointer"><input type="checkbox" value="${p}"> ${p}</label>`).join(''); }
+function fillFrerPorts() { const box = $('frerPorts'); if (box) box.innerHTML = PORTS.map((p) => `<label class="port"><input type="checkbox" value="${p}"> ${p}</label>`).join(''); }
 function frerConf() {
   const egress = [...$('frerPorts').querySelectorAll('input:checked')].map((c) => c.value);
   const ids = ($('frerStreams').value || '').split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
@@ -227,10 +292,10 @@ async function qosLoad() {
     let m = {}; try { m = await rpc('qos.config.interface.tagToCos.get', [port, pcp, 0]); } catch { try { m = await rpc('qos.config.interface.tagToCos.get', [port, pcp]); } catch {} }
     const cos = m.Cos ?? pcp, dpl = m.Dpl ?? 0;
     const tr = document.createElement('tr'); tr.dataset.pcp = pcp;
-    tr.innerHTML = `<td class="mono">${pcp}</td><td><input type="number" min="0" max="7" value="${cos}" style="width:60px" data-f="Cos"></td><td><input type="number" min="0" max="3" value="${dpl}" style="width:60px" data-f="Dpl"></td>`;
+    tr.innerHTML = `<td class="mono">${pcp}</td><td><input type="number" min="0" max="7" value="${cos}" style="width:70px" data-f="Cos"></td><td><input type="number" min="0" max="3" value="${dpl}" style="width:70px" data-f="Dpl"></td>`;
     tr.querySelectorAll('input').forEach((inp) => inp.addEventListener('change', async () => {
       const cfg = { Cos: +tr.querySelector('[data-f="Cos"]').value || 0, Dpl: +tr.querySelector('[data-f="Dpl"]').value || 0 };
-      try { await rpc('qos.config.interface.tagToCos.set', [port, pcp, 0, cfg]); toast(`PCP${pcp}→CoS${cfg.Cos}`, 'ok'); } catch { try { await rpc('qos.config.interface.tagToCos.set', [port, pcp, cfg]); toast(`PCP${pcp}→CoS${cfg.Cos}`, 'ok'); } catch (e) { toast(e.message, 'err'); } }
+      try { await rpc('qos.config.interface.tagToCos.set', [port, pcp, 0, cfg]); toast(`PCP${pcp} → TC${cfg.Cos}`, 'ok'); } catch { try { await rpc('qos.config.interface.tagToCos.set', [port, pcp, cfg]); toast(`PCP${pcp} → TC${cfg.Cos}`, 'ok'); } catch (e) { toast(e.message, 'err'); } }
     }));
     body.appendChild(tr);
   }
@@ -245,10 +310,12 @@ async function rpcSend() {
 const COMMON = ['port.status.get', 'qos.config.interface.queueShaper.get', 'tsn.config.interface.tas.params.get', 'qos.config.interface.tagToCos.get', 'frer.config.get', 'frer.status.get'];
 
 // ── wire + boot ─────────────────────────────────────────────────────────────
+$('actFlood').addEventListener('click', homeFlood);
+$('actStop').addEventListener('click', homeStop);
+$('actProtect').addEventListener('click', demoProtect);
+$('actCbsOff').addEventListener('click', demoOff);
 $('genStart').addEventListener('click', genStart);
 $('genStop').addEventListener('click', genStop);
-$('demoProtect').addEventListener('click', demoProtect);
-$('demoOff').addEventListener('click', demoOff);
 $('vidRefresh').addEventListener('click', vidPoll);
 $('refreshPorts').addEventListener('click', loadPorts);
 $('cbsLoad').addEventListener('click', cbsLoad);
