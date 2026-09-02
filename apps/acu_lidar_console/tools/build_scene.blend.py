@@ -210,6 +210,119 @@ def add_trunks(payload, lo, hi, scale):
         print(f'  TRUNK{path}: {TRUNK_SEGMENTS} segments')
 
 
+def rebuild_wheels():
+    """Throw the imported wheels away and generate clean ones.
+
+    The originals are a low-poly blob: the tyre reads as a pillow, the arch is surrounded by
+    jagged shards left from the same low-poly skin, and the front pair arrive as two coincident
+    discs that z-fight. None of that is fixable by tidying -- there is not enough geometry in
+    there to be tidy. A wheel is a cylinder, a flat cover and a cross, and generated it is exact,
+    lighter, and spins about an axis that is its own by construction.
+
+    Returns the hubs so the spin can be keyframed on them.
+    """
+    originals = [o for o in bpy.data.objects if o.name.startswith('WHEEL_')]
+    if not originals:
+        return []
+
+    hubs = []
+    for o in originals:
+        pts = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+        hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+        centre = (lo + hi) / 2
+        radius = max(hi.y - lo.y, hi.z - lo.z) / 2
+        hubs.append((o.name, centre, radius))
+        bpy.data.objects.remove(o, do_unlink=True)
+
+    # The tyre is thin in the imported model because it is a disc, not a wheel; give it a real
+    # width taken from the radius rather than from that disc.
+    for name, centre, radius in hubs:
+        side = 1.0 if centre.x > 0 else -1.0
+        width = radius * 0.46
+        outer = centre.x + side * width / 2
+
+        me = bpy.data.meshes.new(name)
+        bm = bmesh.new()
+
+        def cylinder(cx, r, w, segments=36):
+            ret = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments,
+                                        radius1=r, radius2=r, depth=w)
+            verts = ret['verts']
+            bmesh.ops.rotate(bm, verts=verts, cent=(0, 0, 0),
+                             matrix=Matrix.Rotation(math.pi / 2, 3, 'Y'))
+            bmesh.ops.translate(bm, verts=verts, vec=(cx, centre.y, centre.z))
+            return verts
+
+        tyre = cylinder(centre.x, radius, width)
+        cover = cylinder(outer + side * 0.002, radius * 0.70, 0.004)
+        hub = cylinder(outer + side * 0.005, radius * 0.16, 0.006, segments=20)
+        bm.to_mesh(me)
+        bm.free()
+
+        # Rubber, rim and cap as three materials, so the cover can be flat and light while the
+        # tyre stays matte black.
+        for label, colour, rough in (('tyre', (0.055, 0.058, 0.065, 1), 0.92),
+                                     ('rim', (0.74, 0.76, 0.79, 1), 0.35),
+                                     ('cap', (0.30, 0.32, 0.36, 1), 0.5)):
+            mat = bpy.data.materials.new(f'wheel_{label}')
+            mat.use_nodes = True
+            bsdf = mat.node_tree.nodes['Principled BSDF']
+            bsdf.inputs['Base Color'].default_value = colour
+            bsdf.inputs['Roughness'].default_value = rough
+            bsdf.inputs['Metallic'].default_value = 0.6 if label == 'rim' else 0.0
+            me.materials.append(mat)
+        counts = (len(tyre), len(cover), len(hub))
+        obj = bpy.data.objects.new(name, me)
+        bpy.context.scene.collection.objects.link(obj)
+
+        # Assign the slots: the cone helper appends faces in the order the cylinders were made.
+        faces = list(me.polygons)
+        per = len(faces) // 3
+        for i, poly in enumerate(faces):
+            poly.material_index = 0 if i < per else (1 if i < 2 * per else 2)
+
+        print(f'  {name}: clean wheel, r {radius:.3f} w {width:.3f}, '
+              f'{len(me.polygons)} faces (was blob), rings {counts}')
+
+    # Shards left around the arch by the old skin: anything of the sills sitting inside the
+    # wheel opening. Bounded by the hub, so it cannot eat the arch itself.
+    for group in ('SILL', 'SIDE_L', 'SIDE_R'):
+        src = bpy.data.objects.get(group)
+        if src is None:
+            continue
+        doomed = []
+        for poly in src.data.polygons:
+            c = src.matrix_world @ poly.center
+            for _, hub_c, radius in hubs:
+                if abs(c.x - hub_c.x) > radius * 0.9:
+                    continue
+                if (Vector((0, c.y - hub_c.y, c.z - hub_c.z))).length < radius * 0.82:
+                    doomed.append(poly.index)
+                    break
+        if not doomed:
+            continue
+        me = src.data
+        for v in me.vertices:
+            v.select = False
+        for e in me.edges:
+            e.select = False
+        for poly in me.polygons:
+            poly.select = False
+        for i in doomed:
+            me.polygons[i].select = True
+        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+        bpy.ops.object.select_all(action='DESELECT')
+        src.select_set(True)
+        bpy.context.view_layer.objects.active = src
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.delete(type='FACE')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f'  {group}: removed {len(doomed)} shards from inside the wheel openings')
+
+    return hubs
+
+
 def _rounded_rect(w, d, r, steps=5):
     """A rounded rectangle in plan, as (x, y) pairs. The Dart side has this in core/geom.dart;
     Blender cannot import that, and one shape is not worth a shared format."""
@@ -469,6 +582,7 @@ def main(body_path, devices_path, out_path):
         obj = build_device(dev, lo, hi, DEVICE_SCALE)
         print(f"  {obj.name}: {len(obj.data.polygons)} faces")
 
+    rebuild_wheels()
     spin_wheels()
     add_undertray(lo, hi)
     add_trunks(payload, lo, hi, DEVICE_SCALE)
