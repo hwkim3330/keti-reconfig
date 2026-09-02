@@ -278,26 +278,59 @@ def rebuild_wheels():
 
         wheel = solid(name, (0.055, 0.058, 0.065), 0.94, 0.0, tyre)
 
-        cover = solid(f'{name}_COVER', (0.075, 0.079, 0.088), 0.85, 0.0,
-                      lambda bm: cyl(bm, outer + side * 0.002, cy, cz, radius * 1.0, 0.005))
+        # A wheel face, not a texture: a recessed dish, four tapered spokes with a fillet, a rim
+        # lip and a bolted cap. The two-box cross it replaces was the same shape the atlas already
+        # draws flat, and at this size it read as two planks.
+        cover = solid(f'{name}_DISH', (0.055, 0.058, 0.066), 0.88, 0.0,
+                      lambda bm: cyl(bm, outer - side * 0.012, cy, cz, radius * 0.94, 0.006))
 
-        def cross(bm):
-            # Arms out to 0.9R and a quarter of the radius wide, standing proud of the cover:
-            # the size the original wheel carries.
-            for angle in (math.pi / 4, -math.pi / 4):
-                ret = bmesh.ops.create_cube(bm, size=1.0)
-                bmesh.ops.scale(bm, verts=ret['verts'],
-                                vec=(0.014, radius * 1.80, radius * 0.26))
-                bmesh.ops.rotate(bm, verts=ret['verts'], cent=(0, 0, 0),
-                                 matrix=Matrix.Rotation(angle, 3, 'X'))
-                bmesh.ops.translate(bm, verts=ret['verts'],
-                                    vec=(outer + side * 0.016, cy, cz))
+        def lip(bm):
+            cyl(bm, outer + side * 0.004, cy, cz, radius * 1.0, 0.022)
+            cyl(bm, outer + side * 0.006, cy, cz, radius * 0.93, 0.020)
 
-        cross_obj = solid(f'{name}_CROSS', (0.94, 0.95, 0.96), 0.30, 0.05, cross)
-        cap = solid(f'{name}_CAP', (0.40, 0.42, 0.46), 0.40, 0.50,
-                    lambda bm: cyl(bm, outer + side * 0.026, cy, cz, radius * 0.18, 0.010,
-                                   segments=24))
-        for child in (cover, cross_obj, cap):
+        lip_obj = solid(f'{name}_LIP', (0.30, 0.32, 0.35), 0.35, 0.55, lip)
+
+        def spokes(bm):
+            face_x = outer + side * 0.008
+            thick = 0.020
+            inner_r, outer_r = radius * 0.19, radius * 0.93
+            inner_w, outer_w = radius * 0.165, radius * 0.105
+            for k in range(4):
+                a = math.pi / 4 + k * math.pi / 2
+                ux, uy = math.cos(a), math.sin(a)
+                px, py = -uy, ux
+                ring = []
+                for r, hw in ((inner_r, inner_w), (outer_r, outer_w)):
+                    for sw in (-1, 1):
+                        for st in (-1, 1):
+                            ring.append(bm.verts.new((
+                                face_x + side * st * thick / 2,
+                                cy + uy * r + py * sw * hw,
+                                cz + ux * r + px * sw * hw,
+                            )))
+                # ring order: inner(-w,-t) inner(-w,+t) inner(+w,-t) inner(+w,+t) then outer
+                i0, i1, i2, i3, o0, o1, o2, o3 = ring
+                for quad in ((i0, i1, i3, i2), (o2, o3, o1, o0),
+                             (i0, i2, o2, o0), (i3, i1, o1, o3),
+                             (i1, i0, o0, o1), (i2, i3, o3, o2)):
+                    try:
+                        bm.faces.new(quad)
+                    except ValueError:
+                        pass
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+        cross_obj = solid(f'{name}_SPOKES', (0.86, 0.88, 0.90), 0.28, 0.35, spokes)
+
+        def hub(bm):
+            cyl(bm, outer + side * 0.020, cy, cz, radius * 0.21, 0.012, segments=28)
+            for k in range(5):
+                a = k * 2 * math.pi / 5
+                cyl(bm, outer + side * 0.028, cy + math.sin(a) * radius * 0.135,
+                    cz + math.cos(a) * radius * 0.135, radius * 0.028, 0.008, segments=10)
+
+        cap = solid(f'{name}_CAP', (0.46, 0.48, 0.52), 0.32, 0.65, hub)
+
+        for child in (cover, lip_obj, cross_obj, cap):
             child.parent = wheel
             child.matrix_parent_inverse = wheel.matrix_world.inverted()
 
@@ -305,7 +338,8 @@ def rebuild_wheels():
               lambda bm: cyl(bm, centre.x - side * width * 0.55, cy, cz, radius * 1.0,
                              width * 1.5))
 
-        print(f'  {name}: r {radius:.3f} w {width:.3f}, tyre+cover+cross+cap+well as 5 objects')
+        faces = sum(len(o.data.polygons) for o in (wheel, cover, lip_obj, cross_obj, cap))
+        print(f'  {name}: r {radius:.3f} w {width:.3f}, {faces} faces over 5 parts + well')
 
     # No face culling around the openings. It was tried at two radii: tight, it left the ragged
     # lip of the old cut; wide, it took 2,392 faces out of the body and the "jagged notch" beside

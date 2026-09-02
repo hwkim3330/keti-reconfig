@@ -136,14 +136,14 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
   /// control can go back to fully opaque without reloading the model.
   static const _js = '''
 window.__shell = 0.42;
-// Only the shell fades. The body is split into named parts, each with its own material, so the
-// floor the boxes stand on, the wheels that give it a stance and the lit lamps stay solid while
-// the roof, flanks, sills and fascias go to glass. A panel missing from this list stays opaque and
-// reads as a cream slab over the vehicle -- which is what SILL did the day it was split out. Alpha-blending every material at once made the whole vehicle a ghost,
-// which is a different picture and a less useful one.
-const __SHELL = ['ROOF', 'SIDE_L', 'SIDE_R', 'FASCIA_FRONT', 'FASCIA_REAR', 'SILL', 'TRIM'];
-function __isShell(name) {
-  return __SHELL.some(function (s) { return (name || '').indexOf(s) >= 0; });
+// Everything fades except what is deliberately solid. The rule used to be the other way round --
+// a list of panels to fade -- and it rotted twice: SILL stayed opaque the day it was split out
+// and read as a cream slab over the front, and the valance and lamp strips did the same to the
+// bumpers. A body part added tomorrow fades by default now, and only hardware has to opt out.
+const __SOLID = ['dev_', 'wheel_', 'well_', 'undertray', 'trunk', 'part_FLOOR'];
+function __isSolid(name) {
+  const n = name || '';
+  return __SOLID.some(function (s) { return n.indexOf(s) >= 0; });
 }
 function __applyShell(a) {
   const mv = document.querySelector('model-viewer');
@@ -152,12 +152,13 @@ function __applyShell(a) {
     try {
       const p = m.pbrMetallicRoughness;
       if (!m.__base) m.__base = Array.from(p.baseColorFactor);
-      const alpha = __isShell(m.name) ? a : 1;
+      const alpha = __isSolid(m.name) ? 1 : a;
       p.setBaseColorFactor([m.__base[0], m.__base[1], m.__base[2], alpha]);
       m.setAlphaMode(alpha >= 0.995 ? 'OPAQUE' : 'BLEND');
     } catch (e) {}
   }
 }
+
 window.setShellOpacity = function (a) { window.__shell = a; __applyShell(a); };
 
 // The wheels turn on a clip baked into the file: model-viewer's scene graph can reach a material
@@ -347,7 +348,7 @@ document.addEventListener('DOMContentLoaded', function () {
   Widget build(BuildContext context) {
     super.build(context);
     return ModelViewer(
-      key: const ValueKey('acu_lidar_model'),
+      key: const ValueKey('keti_tsn_model'),
       backgroundColor: const Color(0xFFF6F8FC),
       id: 'vehicle',
       src: 'assets/roii_scene.glb',

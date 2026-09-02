@@ -14,7 +14,7 @@
     <!-- Haptic confirmation when a port or sensor is selected. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <application
-        android:label="KETI TSN"
+        android:label="KETI TSN Reconfig"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"

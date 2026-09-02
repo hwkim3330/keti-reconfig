@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.keti.aculidar"
+    namespace = "com.keti.tsn.reconfig"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.keti.aculidar.console"
+        applicationId = "com.keti.tsn.reconfig"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

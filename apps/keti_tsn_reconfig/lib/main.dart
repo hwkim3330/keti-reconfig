@@ -12,16 +12,16 @@ void main() {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
-  runApp(const ProviderScope(child: AcuLidarApp()));
+  runApp(const ProviderScope(child: KetiTsnReconfigApp()));
 }
 
-class AcuLidarApp extends StatelessWidget {
-  const AcuLidarApp({super.key});
+class KetiTsnReconfigApp extends StatelessWidget {
+  const KetiTsnReconfigApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'KETI TSN Console',
+      title: 'KETI TSN Reconfig',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       home: const ConsoleShell(),

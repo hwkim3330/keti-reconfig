@@ -6,7 +6,7 @@ An Android tablet console for the 2026 a2z vehicle's ACU and LiDAR harness, clon
 LIDAR_ROOF_FRNT&REAR (Falcon K1), LIDAR_LH&RH, ACU2_NO), plus the KETI TSN backbone that gets
 inserted into it.
 
-Package id `com.keti.aculidar.console`, so it installs alongside the reconfig console rather
+Package id `com.keti.tsn.reconfig`, so it installs alongside the reconfig console rather
 than replacing it. Verified on the SM-T736N (Galaxy Tab S7 FE, 1280×800 logical, landscape).
 
 ```

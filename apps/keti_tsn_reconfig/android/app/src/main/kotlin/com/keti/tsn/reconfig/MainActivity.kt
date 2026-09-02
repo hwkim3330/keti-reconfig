@@ -1,4 +1,4 @@
-package com.keti.aculidar
+package com.keti.tsn.reconfig
 
 import android.Manifest
 import android.os.Build

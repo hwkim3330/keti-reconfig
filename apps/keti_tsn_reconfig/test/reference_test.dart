@@ -1,4 +1,4 @@
-import 'package:acu_lidar_console/core/reference.dart';
+import 'package:keti_tsn_reconfig/core/reference.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The reference data is hand-transcribed from photographs of design sheets, so the failure mode

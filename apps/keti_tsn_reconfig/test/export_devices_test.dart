@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:acu_lidar_console/core/reference.dart';
-import 'package:acu_lidar_console/widgets/device_meshes.dart';
-import 'package:acu_lidar_console/widgets/vehicle_plan.dart' show heightOf;
+import 'package:keti_tsn_reconfig/core/reference.dart';
+import 'package:keti_tsn_reconfig/widgets/device_meshes.dart';
+import 'package:keti_tsn_reconfig/widgets/vehicle_plan.dart' show heightOf;
 import 'package:flutter_test/flutter_test.dart';
 
 /// Dumps the device geometry so the Blender step can put it inside the vehicle body.

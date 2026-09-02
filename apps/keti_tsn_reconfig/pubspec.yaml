@@ -1,4 +1,4 @@
-name: acu_lidar_console
+name: keti_tsn_reconfig
 description: "ACU / LiDAR harness console: the 2026 vehicle sensor-to-ACU wiring, port map and pinouts, on the tablet."
 publish_to: 'none'
 
