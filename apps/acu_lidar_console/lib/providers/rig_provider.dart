@@ -106,6 +106,23 @@ class RigController extends ChangeNotifier {
 
   bool isCut(int path) => _cuts.contains(path);
 
+  /// The A-to-B cross-link is an option, off by default: the module in it is not confirmed on the
+  /// rig, and the pair of front-to-centre runs is the part of the topology that is settled.
+  bool _crossLink = false;
+
+  bool get crossLink => _crossLink;
+
+  void setCrossLink(bool on) {
+    if (_crossLink == on) return;
+    _crossLink = on;
+    if (_mode == RigMode.simulated) _recompute();
+    notifyListeners();
+  }
+
+  /// The trunks in play, which is every one of them except the cross-link when it is switched off.
+  List<Trunk> get trunks =>
+      tsnTrunks.where((t) => t.path != 3 || _crossLink).toList(growable: false);
+
   void toggleCut(int path) {
     _cuts.contains(path) ? _cuts.remove(path) : _cuts.add(path);
     if (_mode == RigMode.simulated) _recompute();

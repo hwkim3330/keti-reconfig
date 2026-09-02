@@ -53,6 +53,14 @@ class _WiringScreenState extends ConsumerState<WiringScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (_backbone) ...[
+                        _OptionChip(
+                          label: 'A-B cross-link',
+                          on: rig.crossLink,
+                          onChanged: (v) => ref.read(rigProvider).setCrossLink(v),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
                       _ModeToggle(
                         backbone: _backbone,
                         onChanged: (v) => setState(() => _backbone = v),
@@ -79,6 +87,49 @@ class _WiringScreenState extends ConsumerState<WiringScreen> {
           const SizedBox(height: 12),
           _Legend(backbone: _backbone),
         ],
+      ),
+    );
+  }
+}
+
+/// An option, off by default. The A-to-B link is real enough to draw but the module in it is not
+/// confirmed, so it is something you switch on to look at rather than part of the baseline.
+class _OptionChip extends StatelessWidget {
+  final String label;
+  final bool on;
+  final ValueChanged<bool> onChanged;
+
+  const _OptionChip({required this.label, required this.on, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onChanged(!on);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.fromLTRB(9, 7, 12, 7),
+        decoration: BoxDecoration(
+          color: on ? Tone.warn.withValues(alpha: 0.12) : Tone.sunken,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: on ? Tone.warn.withValues(alpha: 0.45) : Tone.hairline),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(on ? Icons.check_circle : Icons.circle_outlined,
+                size: 14, color: on ? Tone.warn : Tone.faint),
+            const SizedBox(width: 7),
+            Text(label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Tone.warn : Tone.muted,
+                )),
+          ],
+        ),
       ),
     );
   }
@@ -298,7 +349,7 @@ List<_Run> _sheetRuns() => [
 /// The same harness with the KETI backbone inserted: the forward sensors are aggregated by the
 /// front pair, the three switches are linked to each other, and each of those three links has an
 /// injection module in it.
-List<_Run> _backboneRuns() => [
+List<_Run> _backboneRuns(List<Trunk> trunks) => [
       const _Run('fk_front', 'tsn_fa', colour: Tone.lidar, dashed: true),
       const _Run('hb_front', 'tsn_fa', colour: Tone.lidar, dashed: true),
       const _Run('lidar_rh', 'tsn_fa', colour: Tone.lidar, dashed: true),
@@ -306,7 +357,7 @@ List<_Run> _backboneRuns() => [
       const _Run('fk_rear', 'tsn_r', colour: Tone.lidar, dashed: true),
       const _Run('hb_rear', 'tsn_r', colour: Tone.lidar, dashed: true),
       const _Run('cameras', 'acu_no', port: 'CAM 1-5', rate: 'direct to Orin', colour: Tone.camera, stateKey: 'CAM 1'),
-      for (final t in tsnTrunks)
+      for (final t in trunks)
         _Run(
           t.from,
           t.to,
@@ -365,7 +416,7 @@ class _Diagram extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final runs = backbone ? _backboneRuns() : _sheetRuns();
+    final runs = backbone ? _backboneRuns(ref.read(rigProvider).trunks) : _sheetRuns();
     // In sheet mode the switches are not on the vehicle as far as the document is concerned, so
     // they are simply absent rather than drawn and disclaimed.
     final boxes = _boxes.where((b) => backbone || b.kind != NodeKind.tsn).toList();

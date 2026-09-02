@@ -25,12 +25,16 @@ class VehicleView extends StatefulWidget {
   /// true = plan (top-down), false = the 3D view.
   final bool plan;
 
+  /// The backbone links to draw; the A-to-B cross-link is optional.
+  final List<Trunk> trunks;
+
   const VehicleView({
     super.key,
     required this.snapshot,
     required this.selectedNodeId,
     required this.onSelect,
     required this.plan,
+    required this.trunks,
     this.showCameras = true,
     this.showCables = true,
   });
@@ -113,6 +117,7 @@ class _VehicleViewState extends State<VehicleView> with SingleTickerProviderStat
                   showCameras: widget.showCameras,
                   showCables: widget.showCables,
                   flat: pitch > _planPitch - 0.02,
+                  trunks: widget.trunks,
                 ),
               ),
             );
@@ -262,15 +267,20 @@ class _Prim {
   /// crosses. A body rail does not -- it is a construction line, and a halo makes it shout.
   final bool casing;
 
+  /// Stroked as a dashed line. Used for the body: it is an envelope, not vehicle CAD, and a solid
+  /// outline claims a shape the sheets never give.
+  final bool dashPattern;
+
   _Prim.face(this.quad, this.depth)
       : line = null,
         lineColour = null,
         lineWidth = 0,
         dashed = false,
-        casing = false;
+        casing = false,
+        dashPattern = false;
 
   _Prim.wire(this.line, this.depth, this.lineColour, this.lineWidth,
-      {this.dashed = false, this.casing = true})
+      {this.dashed = false, this.casing = true, this.dashPattern = false})
       : quad = null;
 }
 
@@ -282,6 +292,9 @@ class _Painter extends CustomPainter {
   final bool showCables;
   final bool flat;
 
+  /// The backbone links currently in play; the A-to-B cross-link is optional.
+  final List<Trunk> trunks;
+
   final List<Rect> _taken = [];
 
   _Painter({
@@ -291,6 +304,7 @@ class _Painter extends CustomPainter {
     required this.showCameras,
     required this.showCables,
     required this.flat,
+    required this.trunks,
   });
 
   @override
@@ -382,7 +396,7 @@ class _Painter extends CustomPainter {
         final i1 = (pts.length - 1) * (s + 1) ~/ spans;
         final span = pts.sublist(i0, i1 + 1);
         out.add(_Prim.wire(span, layout.depth(span[span.length ~/ 2]), colour, width,
-            casing: false));
+            casing: false, dashPattern: true));
       }
     }
 
@@ -399,6 +413,7 @@ class _Painter extends CustomPainter {
         rail.withValues(alpha: 0.55),
         1.2,
         casing: false,
+        dashPattern: true,
       ));
     }
   }
@@ -482,7 +497,7 @@ class _Painter extends CustomPainter {
   /// The backbone runs. Drawn heavier than a sensor drop and in the backbone's own colour when
   /// idle, because they are the thing the reconfiguration demo is about.
   void _addTrunks(List<_Prim> out) {
-    for (final t in tsnTrunks) {
+    for (final t in trunks) {
       final a = nodeById(t.from), b = nodeById(t.to);
       if (a == null || b == null) continue;
       final key = t.path == null ? 'trunk' : 'path${t.path}';
@@ -547,10 +562,11 @@ class _Painter extends CustomPainter {
 
   void _drawWire(Canvas canvas, _Prim p) {
     final pts = [for (final v in p.line!) layout.project(v)];
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    var path = Path()..moveTo(pts.first.dx, pts.first.dy);
     for (final o in pts.skip(1)) {
       path.lineTo(o.dx, o.dy);
     }
+    if (p.dashPattern) path = _dash(path);
     if (p.casing) {
       // Casing under core: a two-pass stroke reads as a sheathed cable rather than a hairline.
       canvas.drawPath(
@@ -579,6 +595,18 @@ class _Painter extends CustomPainter {
       canvas.drawLine(mid + const Offset(-5, -5), mid + const Offset(5, 5), paint);
       canvas.drawLine(mid + const Offset(5, -5), mid + const Offset(-5, 5), paint);
     }
+  }
+
+  Path _dash(Path source) {
+    final out = Path();
+    for (final metric in source.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        out.addPath(metric.extractPath(d, (d + 6).clamp(0.0, metric.length)), Offset.zero);
+        d += 11;
+      }
+    }
+    return out;
   }
 
   // -- annotation -------------------------------------------------------------
@@ -707,7 +735,8 @@ class _Painter extends CustomPainter {
     _text(canvas, 'REAR', rear, size: 9.5, colour: Tone.faint, weight: FontWeight.w800, spacing: 1.8, centre: true);
     _text(
       canvas,
-      'Devices drawn ${deviceExaggeration.toStringAsFixed(1)}× oversize',
+      'Devices from the sheet CAD, ${deviceExaggeration.toStringAsFixed(1)}× oversize · '
+      'body is an envelope, not vehicle CAD',
       Offset(10, layout.size.height - 12),
       size: 9.5,
       colour: Tone.faint,
@@ -752,5 +781,6 @@ class _Painter extends CustomPainter {
       old.selectedNodeId != selectedNodeId ||
       old.showCameras != showCameras ||
       old.showCables != showCables ||
-      old.flat != flat;
+      old.flat != flat ||
+      old.trunks.length != trunks.length;
 }
