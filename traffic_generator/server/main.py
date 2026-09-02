@@ -449,7 +449,13 @@ def _video_egress_mbps() -> float:
 @app.get("/api/video/state")
 def api_video_state() -> dict:
     st = relay.state()
-    st["kbps"] = round(_video_egress_mbps() * 1000, 1)   # switch-measured, port-independent
+    mbps = _video_egress_mbps()                          # switch-measured, port-independent
+    st["kbps"] = round(mbps * 1000, 1)
+    # "receiving" drives the LIVE/PROTECTED vs DEGRADED tile. Base it on the real
+    # wire rate rather than the (always-empty) local relay. Note: if the flood
+    # shares this egress its octets inflate the reading - the video panel's own
+    # mpv OSD is the ground-truth health; this tile tracks the normal case.
+    st["receiving"] = mbps > 2.0
     return st
 
 
