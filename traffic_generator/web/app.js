@@ -366,7 +366,7 @@ async function boot() {
   $("btn-save").onclick = saveCurrentPreset;
 
   // --- CBS panel: reserve/clear an egress queue's bandwidth on a switch (802.1Qav) ---
-  const cbsRoles = { "192.168.100.2": "B · generation", "192.168.100.4": "C · recovery" };
+  const cbsRoles = { "192.168.100.1": "A · forward", "192.168.100.2": "B · generation", "192.168.100.4": "C · recovery" };
   try {
     const d = await api("/api/d10/switches");
     const sel = $("cbs-sw");

@@ -19,8 +19,14 @@ if [ "$VIEW" = "video" ]; then
   exec "$HERE/video-player.sh"
 fi
 
-URL="http://localhost:8080/"
-[ -n "$VIEW" ] && URL="http://localhost:8080/?view=$VIEW"
+# view=manage -> the full KETI TSN Console (traffic + CBS/TAS/FRER/QoS/ports for
+# all three switches), so the panel can drive everything, not just the flood.
+if [ "$VIEW" = "manage" ]; then
+  URL="http://localhost:8080/manage"
+else
+  URL="http://localhost:8080/"
+  [ -n "$VIEW" ] && URL="http://localhost:8080/?view=$VIEW"
+fi
 
 # The systemd service may still be coming up when the desktop autostarts us.
 for _ in $(seq 1 60); do

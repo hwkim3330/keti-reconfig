@@ -14,11 +14,13 @@ import json
 import os
 import urllib.request
 
-# Switch 1 = generation side, switch 2 = recovery side of the FRER ring.
+# All three ring switches: A=.1 (front-A / forward), B=.2 (generation),
+# C=.4 (recovery + the video egress). Override with D10_HOSTS if the rig changes.
 SWITCHES = [
-    s.strip() for s in os.environ.get("D10_HOSTS", "192.168.100.2,192.168.100.4").split(",") if s.strip()
+    s.strip() for s in os.environ.get("D10_HOSTS", "192.168.100.1,192.168.100.2,192.168.100.4").split(",") if s.strip()
 ]
-DEFAULT_HOST = SWITCHES[0] if SWITCHES else "192.168.100.2"
+# C (.4) is the video-egress switch, so default the console there when present.
+DEFAULT_HOST = "192.168.100.4" if "192.168.100.4" in SWITCHES else (SWITCHES[0] if SWITCHES else "192.168.100.2")
 _ALLOWED = set(SWITCHES)
 
 USER = os.environ.get("D10_USER", "admin")
