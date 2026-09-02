@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../providers/rig_provider.dart';
+import '../services/keti_ble.dart';
 import '../widgets/inspector.dart';
 import 'pinout_screen.dart';
 import 'sheets_screen.dart';
@@ -39,6 +40,7 @@ class _ConsoleShellState extends ConsumerState<ConsoleShell> {
                 children: [
                   _TopBar(page: _dests[_page].label),
                   if (rig.mode == RigMode.simulated) const _SimulatedStamp(),
+                  if (rig.mode == RigMode.live) const _LiveBanner(),
                   Expanded(
                     child: IndexedStack(
                       index: _page,
@@ -183,40 +185,58 @@ class _NavItem extends StatelessWidget {
   }
 }
 
+/// Three modes, cycled in the order they are worth trying: the document, a script, the rig.
 class _ModeToggle extends ConsumerWidget {
   const _ModeToggle();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rig = ref.watch(rigProvider);
-    final sim = rig.mode == RigMode.simulated;
+    final (icon, label, colour, tip) = switch (rig.mode) {
+      RigMode.reference => (
+          Icons.menu_book_outlined,
+          'REF',
+          Tone.muted,
+          'Reference only. No rig attached, so no link is claimed up or down.',
+        ),
+      RigMode.simulated => (
+          Icons.play_circle_outline,
+          'DEMO',
+          Tone.warn,
+          'Scripted rig. Every link state and rate on screen is generated.',
+        ),
+      RigMode.live => (
+          Icons.sensors,
+          'LIVE',
+          Tone.ok,
+          'The rig over GATT. A path is faulted because its own module said so.',
+        ),
+    };
+    final tinted = rig.mode != RigMode.reference;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Tooltip(
-        message: sim
-            ? 'Scripted rig. Every link state and rate on screen is generated.'
-            : 'Reference only. No rig attached, so no link is claimed up or down.',
+        message: tip,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => ref.read(rigProvider).setMode(sim ? RigMode.reference : RigMode.simulated),
+          onTap: () => ref.read(rigProvider).nextMode(),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              color: sim ? Tone.warn.withValues(alpha: 0.12) : Tone.sunken,
+              color: tinted ? colour.withValues(alpha: 0.12) : Tone.sunken,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: sim ? Tone.warn.withValues(alpha: 0.5) : Tone.hairline),
+              border: Border.all(color: tinted ? colour.withValues(alpha: 0.5) : Tone.hairline),
             ),
             child: Column(
               children: [
-                Icon(sim ? Icons.play_circle_outline : Icons.menu_book_outlined,
-                    size: 20, color: sim ? Tone.warn : Tone.muted),
+                Icon(icon, size: 20, color: colour),
                 const SizedBox(height: 4),
-                Text(sim ? 'DEMO' : 'REF',
+                Text(label,
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.6,
-                        color: sim ? Tone.warn : Tone.muted)),
+                        color: colour)),
               ],
             ),
           ),
@@ -284,10 +304,82 @@ class _TopBar extends ConsumerWidget {
             ),
             const SizedBox(width: 12),
           ],
-          StatusPill(
-            label: sim ? 'Scripted rig' : 'No rig attached',
-            colour: sim ? Tone.warn : Tone.faint,
-            emphasis: sim,
+          _RigPill(rig: rig),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the rig is, in one pill. In LIVE it counts peers that are actually answering, because a
+/// connected peripheral that has stopped publishing is not a peer this console will speak for.
+class _RigPill extends ConsumerWidget {
+  final RigController rig;
+
+  const _RigPill({required this.rig});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (rig.mode == RigMode.reference) {
+      return const StatusPill(label: 'No rig attached', colour: Tone.faint);
+    }
+    if (rig.mode == RigMode.simulated) {
+      return const StatusPill(label: 'Scripted rig', colour: Tone.warn, emphasis: true);
+    }
+    final state = rig.rig;
+    final (label, colour) = switch (state.status) {
+      BleStatus.unsupported => ('No Bluetooth', Tone.bad),
+      BleStatus.unauthorised => ('Bluetooth not permitted', Tone.bad),
+      BleStatus.off => ('Bluetooth off', Tone.bad),
+      BleStatus.scanning || BleStatus.idle => ('Looking for the rig', Tone.warn),
+      BleStatus.connected => (
+          '${state.connected.length}/${KetiPeer.values.length} peers',
+          state.connected.isEmpty ? Tone.warn : Tone.ok,
+        ),
+    };
+    return StatusPill(label: label, colour: colour, emphasis: true);
+  }
+}
+
+/// Only says something when there is something to say: which peers answered, or why none did.
+class _LiveBanner extends ConsumerWidget {
+  const _LiveBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rig = ref.watch(rigProvider);
+    final state = rig.rig;
+    final answering = [for (var p = 1; p <= 3; p++) if (state.path(p) != null) 'INJ $p'];
+    final ok = answering.isNotEmpty;
+    final text = ok
+        ? 'Answering: ${answering.join(', ')}. Everything else on screen is from the sheets, not measured.'
+        : (state.detail ??
+            'Nothing is answering yet. The three injection modules advertise as KETI-PATH1..3.');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+      decoration: BoxDecoration(
+        color: (ok ? Tone.ok : Tone.warn).withValues(alpha: 0.11),
+        border: Border(bottom: BorderSide(color: (ok ? Tone.ok : Tone.warn).withValues(alpha: 0.3))),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+                color: ok ? Tone.ok : Tone.warn, borderRadius: BorderRadius.circular(5)),
+            child: Text(ok ? 'LIVE' : 'NO RIG',
+                style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1)),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(fontSize: 11.5, color: Tone.ink),
+                overflow: TextOverflow.ellipsis),
           ),
         ],
       ),

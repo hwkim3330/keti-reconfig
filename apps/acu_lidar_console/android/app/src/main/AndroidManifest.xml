@@ -1,5 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The rig is six BLE peripherals: three switch controllers and three injection modules.
+         SCANNING is declared neverForLocation because that is what it is for, and the legacy
+         pair is capped at 30 where the new pair takes over. Declaring a permission twice, capped
+         and uncapped, fails the manifest merger. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Haptic confirmation when a port or sensor is selected. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <application

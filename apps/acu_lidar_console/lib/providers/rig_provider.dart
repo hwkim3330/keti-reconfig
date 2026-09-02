@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/reference.dart';
+import '../services/keti_ble.dart';
 
 /// Where the link states on screen come from.
 ///
@@ -18,6 +19,10 @@ enum RigMode {
 
   /// A scripted rig with injected faults, stamped SIMULATED everywhere it is visible.
   simulated,
+
+  /// The real rig over GATT. Nothing is generated: a path is faulted because its own module said
+  /// so, and a module that has gone quiet reads stale rather than reading at its last value.
+  live,
 }
 
 enum LinkState { unknown, up, degraded, down }
@@ -88,6 +93,21 @@ const scenarios = <Scenario>[
 ];
 
 class RigController extends ChangeNotifier {
+  RigController() {
+    _ble.states.listen((s) {
+      _rig = s;
+      if (_mode == RigMode.live) _recompute();
+      notifyListeners();
+    });
+  }
+
+  final KetiBle _ble = KetiBle();
+  RigState _rig = const RigState();
+
+  /// What the rig itself is reporting. Exposed so the chrome can say "no rig found" rather than
+  /// implying one is attached.
+  RigState get rig => _rig;
+
   RigMode _mode = RigMode.reference;
   Scenario _scenario = scenarios.first;
   Timer? _tick;
@@ -104,7 +124,22 @@ class RigController extends ChangeNotifier {
   /// link in, and it only means anything under the simulated rig.
   final _cuts = <int>{};
 
-  bool isCut(int path) => _cuts.contains(path);
+  /// Live, this is the module's own answer; simulated, it is the state we put it in. Never the
+  /// state we asked for: a write that went out is not a relay that opened.
+  bool isCut(int path) => switch (_mode) {
+        RigMode.live => _rig.path(path)?.faulted ?? false,
+        _ => _cuts.contains(path),
+      };
+
+  /// True where the module was answering and has stopped. A stale reading is not a reading.
+  bool isStale(int path) => _mode == RigMode.live && _rig.isStale(path);
+
+  /// True where there is something on the other end of this module to talk to.
+  bool canCut(int path) => switch (_mode) {
+        RigMode.simulated => true,
+        RigMode.live => _rig.path(path) != null,
+        RigMode.reference => false,
+      };
 
   /// The A-to-B cross-link is an option, off by default: the module in it is not confirmed on the
   /// rig, and the pair of front-to-centre runs is the part of the topology that is settled.
@@ -123,7 +158,13 @@ class RigController extends ChangeNotifier {
   List<Trunk> get trunks =>
       tsnTrunks.where((t) => t.path != 3 || _crossLink).toList(growable: false);
 
-  void toggleCut(int path) {
+  Future<void> toggleCut(int path) async {
+    if (_mode == RigMode.live) {
+      final now = _rig.path(path)?.faulted ?? false;
+      await _ble.setPathFault(path, !now);
+      // Nothing is set locally on purpose. The screen changes when the module says it changed.
+      return;
+    }
     _cuts.contains(path) ? _cuts.remove(path) : _cuts.add(path);
     if (_mode == RigMode.simulated) _recompute();
     notifyListeners();
@@ -137,14 +178,28 @@ class RigController extends ChangeNotifier {
     if (_mode == mode) return;
     _mode = mode;
     _tick?.cancel();
-    if (mode == RigMode.simulated) {
-      _recompute();
-      _tick = Timer.periodic(const Duration(milliseconds: 900), (_) => _recompute());
-    } else {
-      _snapshot = RigSnapshot(mode: mode, links: const {}, rates: const {}, at: DateTime.now());
+    switch (mode) {
+      case RigMode.simulated:
+        _recompute();
+        _tick = Timer.periodic(const Duration(milliseconds: 900), (_) => _recompute());
+      case RigMode.live:
+        _ble.start();
+        _recompute();
+        // The report carries its own timestamp, so the only reason to tick is to let a link go
+        // stale on screen without waiting for the next notification that may never come.
+        _tick = Timer.periodic(const Duration(seconds: 1), (_) => _recompute());
+      case RigMode.reference:
+        _snapshot = RigSnapshot(mode: mode, links: const {}, rates: const {}, at: DateTime.now());
     }
     notifyListeners();
   }
+
+  /// Cycles reference to demo to live, which is the order they are worth trying in.
+  void nextMode() => setMode(switch (_mode) {
+        RigMode.reference => RigMode.simulated,
+        RigMode.simulated => RigMode.live,
+        RigMode.live => RigMode.reference,
+      });
 
   void setScenario(Scenario s) {
     _scenario = s;
@@ -180,6 +235,10 @@ class RigController extends ChangeNotifier {
   };
 
   void _recompute() {
+    if (_mode == RigMode.live) {
+      _recomputeLive();
+      return;
+    }
     final links = <String, LinkState>{};
     final rates = <String, double>{};
     for (final entry in _nominal.entries) {
@@ -211,9 +270,29 @@ class RigController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Live state covers exactly what the rig reports: the three inter-switch paths. The ACU ports
+  /// come off the design sheets and nothing on the rig measures them, so they stay unknown rather
+  /// than being coloured in by association.
+  void _recomputeLive() {
+    final links = <String, LinkState>{};
+    for (var p = 1; p <= 3; p++) {
+      final report = _rig.path(p);
+      links['path$p'] = report == null
+          ? LinkState.unknown
+          : (report.faulted ? LinkState.down : LinkState.up);
+    }
+    final trunkUp = links['path1'] == LinkState.up || links['path2'] == LinkState.up;
+    links['trunk'] = _rig.paths.isEmpty
+        ? LinkState.unknown
+        : (trunkUp ? LinkState.up : LinkState.down);
+    _snapshot = RigSnapshot(mode: _mode, links: links, rates: const {}, at: DateTime.now());
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _tick?.cancel();
+    _ble.dispose();
     super.dispose();
   }
 }

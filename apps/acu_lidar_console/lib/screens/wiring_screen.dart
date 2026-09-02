@@ -464,8 +464,9 @@ class _Diagram extends ConsumerWidget {
                 child: _Injector(
                   path: w.run.path!,
                   cut: rig.isCut(w.run.path!),
+                  stale: rig.isStale(w.run.path!),
                   confirmed: w.run.confirmed,
-                  live: rig.mode == RigMode.simulated,
+                  live: rig.canCut(w.run.path!),
                   onTap: () {
                     HapticFeedback.mediumImpact();
                     ref.read(rigProvider).toggleCut(w.run.path!);
@@ -559,6 +560,11 @@ class _Injector extends StatelessWidget {
   final bool cut;
   final bool live;
   final bool confirmed;
+
+  /// The module was answering and has stopped. Not the same as closed, and not the same as
+  /// absent, so it says neither.
+  final bool stale;
+
   final VoidCallback onTap;
 
   const _Injector({
@@ -566,18 +572,25 @@ class _Injector extends StatelessWidget {
     required this.cut,
     required this.live,
     required this.confirmed,
+    required this.stale,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colour = cut ? Tone.bad : (confirmed ? Tone.tsn : Tone.warn);
+    final colour = stale
+        ? Tone.warn
+        : cut
+            ? Tone.bad
+            : (confirmed ? Tone.tsn : Tone.warn);
     return Tooltip(
-      message: !confirmed
-          ? 'A module on this link is expected but not confirmed on the rig.'
-          : live
-              ? (cut ? 'Path $path is open. Tap to restore.' : 'Tap to open path $path.')
-              : 'No rig attached — switch to DEMO to cut a path.',
+      message: stale
+          ? 'Module $path has stopped publishing. Its last word is not its current state.'
+          : !confirmed
+              ? 'A module on this link is expected but not confirmed on the rig.'
+              : live
+                  ? (cut ? 'Path $path is open. Tap to restore.' : 'Tap to open path $path.')
+                  : 'Nothing on the other end — switch to DEMO, or connect the rig in LIVE.',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -595,11 +608,21 @@ class _Injector extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(cut ? Icons.link_off : Icons.electrical_services_outlined,
-                    size: 14, color: colour.withValues(alpha: live ? 1 : 0.55)),
+                Icon(
+                    stale
+                        ? Icons.help_outline
+                        : cut
+                            ? Icons.link_off
+                            : Icons.electrical_services_outlined,
+                    size: 14,
+                    color: colour.withValues(alpha: live ? 1 : 0.55)),
                 const SizedBox(width: 6),
                 Text(
-                  cut ? 'CUT' : (confirmed ? 'INJ $path' : 'INJ $path?'),
+                  stale
+                      ? 'STALE'
+                      : cut
+                          ? 'CUT'
+                          : (confirmed ? 'INJ $path' : 'INJ $path?'),
                   style: Type.monoAt(10.5,
                       weight: FontWeight.w800, colour: colour.withValues(alpha: live ? 1 : 0.55)),
                 ),

@@ -78,6 +78,28 @@ and nothing else, or named nodes (`BODY`, `GLASS`, `WHEEL`, `INTERIOR`) so parts
 instead of every material being alpha-blended at once; front on +Z, up on +Y; and real-world
 scale. Triangle count is not the problem — the body is 40 k.
 
+## Three modes
+
+The rail cycles them in the order they are worth trying.
+
+**REF** — the document. The harness is drawn as designed, no link is claimed either way, and the
+injection modules will not fire.
+
+**DEMO** — a script. Scenarios inject faults, SIMULATED is stamped across the top, and every rate
+under it is generated.
+
+**LIVE** — the rig over GATT. Six peripherals: `KETI-SWITCH1..3` (service `9a1e0101-…`, state
+characteristic `9a1e0102-…`) and `KETI-PATH1..3` (`9a1e0001-…` / `9a1e0002-…`). The modules
+publish `!STATE:<seq>:<path>:<NORMAL|FAULT>:<relay>:<event>` about once a second and take
+`!SET:FAULT` / `!SET:NORMAL`. Tapping an injection module writes; the screen changes when the
+module says it changed, never because the write went out. Anything not heard from for five
+seconds reads STALE rather than reading at its last value, and the ACU ports stay unknown because
+nothing on the rig measures them.
+
+Not yet verified against hardware — the protocol and UUIDs are the reconfig console's, which is
+the firmware's, but no module has been in front of this build. What has been checked on the
+tablet: the permission flow, the scan, and that an absent rig says so.
+
 ## Rules this console keeps
 
 *A value is either sourced or visibly marked as not sourced.* Link rates the sheets never state
