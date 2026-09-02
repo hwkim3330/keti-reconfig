@@ -23,6 +23,7 @@ What it fixes, and why each one matters to this console:
 """
 
 import math
+import os
 import sys
 
 import bmesh
@@ -117,7 +118,52 @@ def classify(obj):
     return 'TRIM'
 
 
-def main(src, dst):
+def swap_textures(directory):
+    """Point the material at the tidied atlas from tools/fix_textures.py.
+
+    Which image is which is decided by following each image node's links forward until they reach
+    a Principled input. Matching on the node wired straight into Base Color is not enough -- the
+    importer routes the colour through a mix when there is a baseColorFactor, so that test found
+    nothing and both images were replaced with the ORM map. The whole vehicle came out pink.
+    """
+    colour_path = os.path.join(directory, 'baseColor.png')
+    orm_path = os.path.join(directory, 'orm.png')
+    if not (os.path.exists(colour_path) and os.path.exists(orm_path)):
+        print(f'  no tidied textures in {directory}, keeping the originals')
+        return
+
+    def reaches(node, tree, wanted, depth=0):
+        if depth > 6:
+            return False
+        for link in tree.links:
+            # Compare by name, not identity: Blender hands out fresh Python wrappers for the same
+            # node, so `is` misses and every image came back "left alone".
+            if link.from_node.name != node.name:
+                continue
+            if link.to_socket.name in wanted:
+                return True
+            if link.to_node.name != node.name and reaches(link.to_node, tree, wanted, depth + 1):
+                return True
+        return False
+
+    for mat in bpy.data.materials:
+        if not mat.use_nodes:
+            continue
+        tree = mat.node_tree
+        images = [n for n in tree.nodes if n.type == 'TEX_IMAGE' and n.image]
+        for node in images:
+            if reaches(node, tree, {'Metallic', 'Roughness', 'Specular IOR Level'}):
+                node.image = bpy.data.images.load(orm_path, check_existing=True)
+                which = 'orm'
+            elif reaches(node, tree, {'Base Color'}):
+                node.image = bpy.data.images.load(colour_path, check_existing=True)
+                which = 'colour'
+            else:
+                which = 'left alone'
+            print(f'  {mat.name}: {node.name} -> {which}')
+
+
+def main(src, dst, textures=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=src)
 
@@ -199,6 +245,9 @@ def main(src, dst):
     size = (hi - lo) * scale
     print(f'scaled x{scale:.4f} -> {size.x:.2f} m wide, {size.y:.2f} m long, {size.z:.2f} m tall')
 
+    if textures:
+        swap_textures(textures)
+
     for img in bpy.data.images:
         if img.size[0] <= 4:
             continue
@@ -224,4 +273,4 @@ def main(src, dst):
 
 if __name__ == '__main__':
     argv = sys.argv[sys.argv.index('--') + 1:]
-    main(argv[0], argv[1])
+    main(argv[0], argv[1], argv[2] if len(argv) > 2 else None)

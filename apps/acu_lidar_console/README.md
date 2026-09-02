@@ -68,11 +68,14 @@ python3 tools/repack_roii_body.py assets/roii_reconfig.glb assets/roii_body.glb
 # 2.08 MB binary GLB (was 3.68 MB JSON)
 ```
 
-Then `tools/clean_body.blend.py` takes it through Blender:
+Then the model pipeline, in order:
 
 ```
+python3 tools/fix_textures.py assets/roii_body.glb build/tex
+flutter test test/export_devices_test.dart                      # -> build/devices.json
+
 /snap/bin/blender --background --factory-startup --python tools/clean_body.blend.py -- \
-    assets/roii_body.glb assets/roii_body_clean.glb
+    assets/roii_body.glb assets/roii_body_clean.glb build/tex
 # islands before weld: 606
 #   FASCIA_FRONT 8495 faces · FASCIA_REAR 7166 · SIDE_R 5847 · SIDE_L 5827 · FLOOR 5619
 #   ROOF 2902 · WHEEL_FL 1311 · WHEEL_RL 1094 · WHEEL_RR 922 · WHEEL_FR 804 · TRIM 13
@@ -89,10 +92,25 @@ the shell translucent while the floor and wheels stay solid. **4.0 m is an assum
 sheets give no vehicle dimensions — but the origin is now on the ground and centred, so a mount
 height means something.
 
-The textures were an atlas with about 40% waste and an ORM map that is nearly a two-level mask:
-roughness sits at 0.25 ± 0.08 across the whole image, metallic is bimodal at ~0 for the paint and
-glass and ~0.6 for the wheels and trim. So the colour atlas keeps its detail at 1024² and the ORM
-goes to 512². Collapsing metallic to a constant would have made the wheels plastic.
+```
+/snap/bin/blender --background --factory-startup --python tools/build_scene.blend.py -- \
+    assets/roii_body_clean.glb build/devices.json assets/roii_scene.glb
+```
+
+`fix_textures.py` earns its place. 43% of the atlas reads as near-black and it is tempting to call
+that unused, but rasterising the UVs says 76.7% of the image is covered — most of the black is
+glass, tyres, arches and underside. What was wrong is the *light* 30%: white paint with shadow and
+dirt baked into it, which the console then lights again, so it read as grey blotching at any zoom.
+Anything already light is pulled most of the way to one paint colour and anything dark is left
+alone, which keeps the window frames, badges and panel gaps. The remaining 23% really is unused
+black, so the colour is flooded outward past the island edges — otherwise the mip chain averages
+that black into every panel join. The mask for that has to come from the UVs: a luminance
+threshold cannot separate background from window glass, because after JPEG the two overlap
+between luminance 8 and 30.
+
+The ORM map is nearly a two-level mask — roughness 0.25 ± 0.08 everywhere, metallic bimodal at ~0
+for paint and glass and ~0.6 for wheels and trim — so colour keeps its detail at 1024² and ORM
+drops to 512². Collapsing metallic to a constant would have made the wheels plastic.
 
 Hotspots are placed from normalised coordinates — the same `pos` and height the native 3D view
 reads out of `reference.dart` — resolved at load time against whatever body is loaded. Hard-coded

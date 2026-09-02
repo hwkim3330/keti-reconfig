@@ -328,7 +328,7 @@ def add_plate(lo, hi, text):
 
     w = size.x * 0.22
     h = w * 160 / 640
-    y = lo.y + 0.015
+    y = lo.y - 0.006   # proud of the fascia; set inside, the body covers it
     z = lo.z + size.z * 0.20
     me = bpy.data.meshes.new('PLATE')
     bm = bmesh.new()
