@@ -4,10 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../providers/rig_provider.dart';
 import '../widgets/inspector.dart';
-import 'acu_screen.dart';
 import 'pinout_screen.dart';
 import 'sheets_screen.dart';
 import 'topology_screen.dart';
+import 'wiring_screen.dart';
 
 class ConsoleShell extends ConsumerStatefulWidget {
   const ConsoleShell({super.key});
@@ -21,7 +21,7 @@ class _ConsoleShellState extends ConsumerState<ConsoleShell> {
 
   static const _dests = [
     (icon: Icons.directions_car_filled_outlined, label: 'Vehicle'),
-    (icon: Icons.settings_input_component_outlined, label: 'ACU'),
+    (icon: Icons.account_tree_outlined, label: 'Wiring'),
     (icon: Icons.table_rows_outlined, label: 'Pinouts'),
     (icon: Icons.photo_library_outlined, label: 'Sheets'),
   ];
@@ -44,7 +44,7 @@ class _ConsoleShellState extends ConsumerState<ConsoleShell> {
                       index: _page,
                       children: const [
                         TopologyScreen(),
-                        AcuScreen(),
+                        WiringScreen(),
                         PinoutScreen(),
                         SheetsScreen(),
                       ],

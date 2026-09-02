@@ -75,6 +75,8 @@ const scenarios = <Scenario>[
       down: {'1-1'}, degraded: {'1-2'}),
   Scenario('cam3', 'CAM 3 jack down', 'Side LH FRT and Side RH RR both lost — one dual jack carries two feeds.',
       down: {'CAM 3'}),
+  Scenario('path3', 'TSN path 3 cut', 'The front cross-link is gone. The two front switches can only reach each other through the centre.',
+      down: {'path3'}),
   Scenario('path1', 'TSN path 1 cut', 'Front A to rear is gone. Everything the front pair carries has to take path 2.',
       down: {'path1'}, degraded: {'path2'}),
   Scenario('path2', 'TSN path 2 cut', 'Front B to rear is gone. Path 1 carries both halves.',
@@ -96,6 +98,19 @@ class RigController extends ChangeNotifier {
     rates: const {},
     at: DateTime.fromMillisecondsSinceEpoch(0),
   );
+
+  /// Paths the operator has opened with an injection module, independent of the scenario. On the
+  /// rig this is a relay in an inline module; here it is the same state the relay would put the
+  /// link in, and it only means anything under the simulated rig.
+  final _cuts = <int>{};
+
+  bool isCut(int path) => _cuts.contains(path);
+
+  void toggleCut(int path) {
+    _cuts.contains(path) ? _cuts.remove(path) : _cuts.add(path);
+    if (_mode == RigMode.simulated) _recompute();
+    notifyListeners();
+  }
 
   RigMode get mode => _mode;
   Scenario get scenario => _scenario;
@@ -143,6 +158,7 @@ class RigController extends ChangeNotifier {
     'lan3': 700,
     'path1': 2600,
     'path2': 2600,
+    'path3': 1400,
     'trunk': 4200,
   };
 
@@ -154,6 +170,12 @@ class RigController extends ChangeNotifier {
       final port = portById(key);
       if (port != null && !port.used) {
         links[key] = LinkState.unknown;
+        continue;
+      }
+      final cutPath = key.startsWith('path') ? int.tryParse(key.substring(4)) : null;
+      if (cutPath != null && _cuts.contains(cutPath)) {
+        links[key] = LinkState.down;
+        rates[key] = 0;
         continue;
       }
       if (_scenario.down.contains(key)) {

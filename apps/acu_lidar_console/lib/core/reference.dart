@@ -243,23 +243,33 @@ class Trunk {
   final String to;
   final String label;
 
-  /// Which of the two redundant paths this run belongs to, or null for a single link.
+  /// Which of the three inter-switch paths this run is, or null for a link that leaves the
+  /// backbone.
   final int? path;
 
-  const Trunk(this.from, this.to, this.label, {this.path});
+  /// True where an inline fault-injection module sits in the run. Those are the runs the tablet
+  /// can cut: the module opens a relay and the switches have to reschedule around it.
+  final bool injector;
+
+  const Trunk(this.from, this.to, this.label, {this.path, this.injector = false});
 }
 
+/// Three links between the three switches, each with an injection module in it, plus the run out
+/// of the backbone into ACU_IT. Cutting any one of the three is the demo: the schedule moves the
+/// traffic onto what is left.
 const tsnTrunks = <Trunk>[
-  Trunk('tsn_fa', 'tsn_r', 'Path 1 · front A to rear', path: 1),
-  Trunk('tsn_fb', 'tsn_r', 'Path 2 · front B to rear', path: 2),
-  Trunk('tsn_r', 'acu_it', 'Rear switch to ACU_IT'),
+  Trunk('tsn_fa', 'tsn_r', 'Path 1 · front A to centre', path: 1, injector: true),
+  Trunk('tsn_fb', 'tsn_r', 'Path 2 · front B to centre', path: 2, injector: true),
+  Trunk('tsn_fa', 'tsn_fb', 'Path 3 · front cross-link', path: 3, injector: true),
+  Trunk('tsn_r', 'acu_it', 'Centre switch to ACU_IT'),
 ];
 
 const tsnNote =
-    'The three switches and the two paths between them are the KETI insertion, not a reading of '
+    'The three switches and the three links between them are the KETI insertion, not a reading of '
     'the a2z sheets. On the sheets every sensor runs straight into an ACU port; here the forward '
-    'sensors are aggregated by the front pair and carried aft on two independent runs, so a cut '
-    'run is a reroute rather than a lost sensor.';
+    'sensors are aggregated by the front pair and carried on to the centre switch, and every '
+    'inter-switch link has an inline injection module the tablet can open. Cutting one is a '
+    'reroute, not a lost sensor -- which is the whole point of the exercise.';
 
 List<Node> get allNodes => [...lidarNodes, ...ecuNodes, ...tsnNodes, ...cameraNodes];
 
@@ -378,7 +388,7 @@ const acuItPorts = <AcuPort>[
     row: 0,
     col: 0,
     label: 'FalconK 전방',
-    short: 'FalconK F',
+    short: 'Falcon K1 F',
     peerNodeId: 'fk_front',
     speed: _t1Unstated,
   ),
@@ -388,7 +398,7 @@ const acuItPorts = <AcuPort>[
     row: 0,
     col: 1,
     label: '허밍버드 후방',
-    short: '허밍버드 R',
+    short: 'Hummingbird R',
     peerNodeId: 'hb_rear',
     speed: _t1Unstated,
   ),
@@ -418,7 +428,7 @@ const acuItPorts = <AcuPort>[
     row: 1,
     col: 0,
     label: '미사용',
-    short: '미사용',
+    short: 'Unused',
     used: false,
     speed: Sourced('1000BASE-T1',
         from: Provenance.inferred,
@@ -460,7 +470,7 @@ const acuItPorts = <AcuPort>[
     row: 1,
     col: 0,
     label: 'FalconK 후방',
-    short: 'FalconK R',
+    short: 'Falcon K1 R',
     peerNodeId: 'fk_rear',
     speed: _t1Unstated,
     note: 'Superseded revision of the same photo reads "허밍버드 전방" here.',
@@ -471,7 +481,7 @@ const acuItPorts = <AcuPort>[
     row: 1,
     col: 1,
     label: '허밍버드 전방',
-    short: '허밍버드 F',
+    short: 'Hummingbird F',
     peerNodeId: 'hb_front',
     speed: _t1Unstated,
     note: 'Superseded revision of the same photo reads "허밍버드 후방" here.',

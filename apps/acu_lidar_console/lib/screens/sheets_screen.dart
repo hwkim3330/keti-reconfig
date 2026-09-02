@@ -13,10 +13,23 @@ class SheetsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final groups = sheetGroups.entries.toList();
     return ListView.separated(
-      padding: const EdgeInsets.all(14),
-      itemCount: groups.length,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      itemCount: groups.length + 1,
       separatorBuilder: (_, __) => const SizedBox(height: 14),
-      itemBuilder: (_, i) {
+      itemBuilder: (_, index) {
+        if (index == 0) {
+          return Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                SectionTitle('Where the sheets disagree'),
+                SizedBox(height: 10),
+                Note(acuItRevisionNote, icon: Icons.history_edu_outlined),
+              ],
+            ),
+          );
+        }
+        final i = index - 1;
         final g = groups[i];
         return Panel(
           child: Column(
