@@ -42,10 +42,18 @@ def classify(obj):
     """
     d = obj.dimensions
     c = obj.matrix_world @ (0.125 * sum((Vector(v) for v in obj.bound_box), Vector()))
-    if d.x < 0.09 and d.y < 0.45 and d.z < 0.45 and abs(c.x) > 0.33 and c.z < -0.2:
-        side = 'L' if c.x < 0 else 'R'
-        end = 'F' if c.y < 0 else 'R'
-        return f'WHEEL_{end}{side}'
+
+    # A wheel is a disc: thin across the vehicle and roughly as tall as it is long. The first
+    # version asked only for "thin, low and outboard", which is also true of the sill strips --
+    # one of them runs 0.97 m down the whole flank -- so they joined the wheel groups and dragged
+    # each group's origin off the hub. The spin then looked like the wheel orbiting the car.
+    if d.x < 0.09 and abs(c.x) > 0.30 and c.z < -0.30:
+        ratio = d.y / d.z if d.z > 1e-6 else 99
+        if 0.80 < ratio < 1.25 and 0.20 < d.z < 0.45:
+            side = 'L' if c.x < 0 else 'R'
+            end = 'F' if c.y < 0 else 'R'
+            return f'WHEEL_{end}{side}'
+        return 'SILL'
     if c.z > 0.30 and d.x > 0.4:
         return 'ROOF'
     if c.z < -0.33 and d.x > 0.4:

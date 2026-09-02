@@ -25,6 +25,11 @@ class ModelVehicleView extends StatefulWidget {
   /// Raises the lamp materials' emissive back to what they were exported with.
   final bool lightsOn;
 
+  /// Turntable azimuth in degrees, and the polar angle. Drag still works; this is for when the
+  /// same angle has to come back twice -- a photograph of the rig, or handing the tablet over.
+  final double orbitDeg;
+  final double polarDeg;
+
   const ModelVehicleView({
     super.key,
     required this.selectedNodeId,
@@ -32,6 +37,8 @@ class ModelVehicleView extends StatefulWidget {
     this.shellOpacity = 0.42,
     this.wheelsTurning = false,
     this.lightsOn = false,
+    this.orbitDeg = 40,
+    this.polarDeg = 68,
   });
 
   @override
@@ -108,10 +115,11 @@ class _ModelVehicleViewState extends State<ModelVehicleView>
   static const _js = '''
 window.__shell = 0.42;
 // Only the shell fades. The body is split into named parts, each with its own material, so the
-// floor the boxes stand on and the wheels that give it a stance stay solid while the roof, flanks
-// and fascias go to glass. Alpha-blending every material at once made the whole vehicle a ghost,
+// floor the boxes stand on, the wheels that give it a stance and the lit lamps stay solid while
+// the roof, flanks, sills and fascias go to glass. A panel missing from this list stays opaque and
+// reads as a cream slab over the vehicle -- which is what SILL did the day it was split out. Alpha-blending every material at once made the whole vehicle a ghost,
 // which is a different picture and a less useful one.
-const __SHELL = ['ROOF', 'SIDE_L', 'SIDE_R', 'FASCIA_FRONT', 'FASCIA_REAR', 'TRIM'];
+const __SHELL = ['ROOF', 'SIDE_L', 'SIDE_R', 'FASCIA_FRONT', 'FASCIA_REAR', 'SILL', 'TRIM'];
 function __isShell(name) {
   return __SHELL.some(function (s) { return (name || '').indexOf(s) >= 0; });
 }
@@ -147,6 +155,13 @@ window.setWheels = function (on) {
       mv.pause();
     }
   } catch (e) {}
+};
+
+// A turntable. Dragging is still there; this is the same view twice.
+window.setOrbit = function (theta, phi) {
+  const mv = document.querySelector('model-viewer');
+  if (!mv) return;
+  mv.cameraOrbit = theta + 'deg ' + phi + 'deg 105%';
 };
 
 // Lamps ship lit so the exporter keeps their emissiveFactor, and are switched off at load. A
@@ -220,7 +235,9 @@ document.addEventListener('DOMContentLoaded', function () {
     super.didUpdateWidget(old);
     if (old.shellOpacity != widget.shellOpacity ||
         old.wheelsTurning != widget.wheelsTurning ||
-        old.lightsOn != widget.lightsOn) {
+        old.lightsOn != widget.lightsOn ||
+        old.orbitDeg != widget.orbitDeg ||
+        old.polarDeg != widget.polarDeg) {
       _push();
     }
   }
@@ -231,6 +248,8 @@ document.addEventListener('DOMContentLoaded', function () {
     js.runJavaScript('window.setShellOpacity(${widget.shellOpacity.toStringAsFixed(3)})');
     js.runJavaScript('window.setWheels(${widget.wheelsTurning})');
     js.runJavaScript('window.setLights(${widget.lightsOn})');
+    js.runJavaScript(
+        'window.setOrbit(${widget.orbitDeg.toStringAsFixed(1)}, ${widget.polarDeg.toStringAsFixed(1)})');
   }
 
   @override

@@ -27,6 +27,8 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
   double _opacity = 0.42;
   bool _wheels = false;
   bool _lights = false;
+  double _orbit = 40;
+  double _polar = 68;
   VehicleViewMode _mode = VehicleViewMode.model;
 
   void _select(String? id) {
@@ -63,6 +65,8 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                             shellOpacity: _opacity,
                             wheelsTurning: _wheels,
                             lightsOn: _lights,
+                            orbitDeg: _orbit,
+                            polarDeg: _polar,
                           ),
                           RepaintBoundary(
                             child: VehicleView(
@@ -122,6 +126,22 @@ class _TopologyScreenState extends ConsumerState<TopologyScreen> {
                       ),
                     ),
                     Positioned(left: 14, bottom: 14, child: _Legend(mode: _mode)),
+                    if (_mode == VehicleViewMode.model)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 14,
+                        child: Center(
+                          child: _Turntable(
+                            azimuth: _orbit,
+                            onAzimuth: (v) => setState(() => _orbit = v),
+                            onPreset: (a, p) => setState(() {
+                              _orbit = a;
+                              _polar = p;
+                            }),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       right: 14,
                       bottom: 14,
@@ -215,6 +235,72 @@ class _ViewSwitch extends StatelessWidget {
                     color: m == mode ? Colors.white : Tone.muted,
                   ),
                 ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Azimuth on a bar, plus the four views anyone actually asks for. Dragging the model still
+/// works — this is for when the same angle has to come back twice.
+class _Turntable extends StatelessWidget {
+  final double azimuth;
+  final ValueChanged<double> onAzimuth;
+  final void Function(double azimuth, double polar) onPreset;
+
+  const _Turntable({required this.azimuth, required this.onAzimuth, required this.onPreset});
+
+  static const _presets = <(String, double, double)>[
+    ('ISO', 40, 68),
+    ('Front', 0, 80),
+    ('Side', 90, 85),
+    ('Top', 0, 6),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return _Capsule(
+      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.threed_rotation, size: 15, color: Tone.faint),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 168,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 3,
+                activeTrackColor: Tone.accent,
+                inactiveTrackColor: Tone.hairlineStrong,
+                thumbColor: Colors.white,
+                overlayShape: SliderComponentShape.noOverlay,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7, elevation: 2),
+              ),
+              child: Slider(value: azimuth, min: -180, max: 180, onChanged: onAzimuth),
+            ),
+          ),
+          SizedBox(
+            width: 46,
+            child: Text('${azimuth.round()}°',
+                textAlign: TextAlign.right,
+                style: Type.monoAt(11, weight: FontWeight.w700, colour: Tone.muted)),
+          ),
+          const SizedBox(width: 8),
+          Container(width: 1, height: 20, color: Tone.hairline),
+          for (final (label, a, p) in _presets)
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onPreset(a, p);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 11.5, fontWeight: FontWeight.w700, color: Tone.muted)),
               ),
             ),
         ],

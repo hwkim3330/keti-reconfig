@@ -38,7 +38,6 @@ from mathutils import Matrix, Vector
 DEVICE_SCALE = 1.6
 WHEEL_SPIN_FRAMES = 48
 PLATE_TEXT = 'ACU / LiDAR'
-PLATE_LOGO = 'assets/keti_logo.png'
 
 
 def body_bounds():
@@ -125,7 +124,10 @@ def spin_wheels():
         bpy.ops.object.select_all(action='DESELECT')
         o.select_set(True)
         bpy.context.view_layer.objects.active = o
+        # The hub, not the group centre. With the group now holding only the disc islands the
+        # bounding-box centre is the hub; it was not when the sill strips were still in there.
         bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+        print('    hub at (%.3f %.3f %.3f)' % tuple(o.matrix_world.translation))
         o.rotation_mode = 'XYZ'
         for frame, angle in ((1, 0.0), (WHEEL_SPIN_FRAMES, -2 * math.pi)):
             o.rotation_euler = (angle, 0, 0)
@@ -133,66 +135,112 @@ def spin_wheels():
         print(f'  spin {o.name}')
 
 
-def add_lamp(name, lo, hi, front):
-    """A bar across the fascia, emissive so the app can switch it on."""
+def lamp_faces_check(obj):
+    return obj.data.polygons
+
+
+def carve_lamps(lo, hi):
+    """Light the lamps the model already has, selected by where they are.
+
+    Three heuristics were tried and all three ran away: bright-texture caught the white bumper,
+    dark-texture caught most of the front end, and adding an outward-facing test only trimmed it.
+    Texture colour is the wrong handle -- the atlas is not laid out by part. So the lamps are cut
+    by position, out of an orthographic front render of this body: two clusters per end at
+    x = +-0.53 m and z = 0.27 m, on a body 1.84 m wide and 2.17 m tall. A box cannot run away.
+    """
     size = hi - lo
-    y = (lo.y + 0.02) if front else (hi.y - 0.02)
-    z = lo.z + size.z * 0.42
-    w = size.x * 0.26
-    me = bpy.data.meshes.new(name)
-    bm = bmesh.new()
-    h = size.z * 0.030
-    pts = [
-        Vector((-w, y, z - h)),
-        Vector((w, y, z - h)),
-        Vector((w, y, z + h)),
-        Vector((-w, y, z + h)),
-    ]
-    bm.faces.new([bm.verts.new(p) for p in pts])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bm.to_mesh(me)
-    bm.free()
+    cx = (lo.x + hi.x) / 2
+    # Fractions of the body, so the boxes survive a rescale.
+    dx, half_w = 0.575, 0.13      # cluster centre and half width, as a fraction of half-width
+    z0, z1 = 0.085, 0.175         # fraction of height
+    depth = 0.10                  # fraction of length, in from the end
 
-    mat = bpy.data.materials.new(f'lamp_{name.lower()}')
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes['Principled BSDF']
-    warm = (1.0, 0.94, 0.82, 1.0) if front else (1.0, 0.25, 0.18, 1.0)
-    bsdf.inputs['Base Color'].default_value = warm
-    bsdf.inputs['Emission Color'].default_value = warm
-    # Exported lit, then switched off by the app at load. A material exported with zero emission
-    # loses its emissiveFactor entirely, and there is nothing left for the app to turn up.
-    bsdf.inputs['Emission Strength'].default_value = 1.0
-    obj = bpy.data.objects.new(name, me)
-    obj.data.materials.append(mat)
-    bpy.context.scene.collection.objects.link(obj)
-    return obj
+    for end_name, name, tint, facing in (
+        ('FASCIA_FRONT', 'LAMP_FRONT', (1.0, 0.95, 0.86), -1),
+        ('FASCIA_REAR', 'LAMP_REAR', (1.0, 0.22, 0.16), 1),
+    ):
+        src = bpy.data.objects.get(end_name)
+        if src is None:
+            continue
+        y_end = lo.y if facing < 0 else hi.y
+        me = src.data
+        chosen = []
+        for poly in me.polygons:
+            c = src.matrix_world @ poly.center
+            if abs(c.y - y_end) > size.y * depth:
+                continue
+            if not (lo.z + size.z * z0 <= c.z <= lo.z + size.z * z1):
+                continue
+            if poly.normal.y * facing < 0.35:
+                continue
+            offset = abs(abs(c.x - cx) - size.x / 2 * dx)
+            if offset > size.x / 2 * half_w:
+                continue
+            chosen.append(poly.index)
+        if not chosen:
+            print(f'  {name}: nothing in the lamp boxes, skipped')
+            continue
+
+        pts = [src.matrix_world @ me.vertices[v].co
+               for i in chosen for v in me.polygons[i].vertices]
+        bx = (min(p.x for p in pts), max(p.x for p in pts))
+        bz = (min(p.z for p in pts), max(p.z for p in pts))
+        print(f'  {name}: {len(chosen)} faces  x {bx[0]:.2f}..{bx[1]:.2f}  z {bz[0]:.2f}..{bz[1]:.2f}')
+
+        # Clear vertices and edges too, and set face mode *before* entering edit. The mesh
+        # arrives with everything selected from the split in clean_body; clearing only the polygon
+        # flags left every vertex selected, and select_mode(FACE) then re-derived "all faces" --
+        # so the whole fascia separated out as the lamp and the front of the vehicle lit up.
+        for v in me.vertices:
+            v.select = False
+        for e in me.edges:
+            e.select = False
+        for poly in me.polygons:
+            poly.select = False
+        for i in chosen:
+            me.polygons[i].select = True
+        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+        bpy.ops.object.select_all(action='DESELECT')
+        src.select_set(True)
+        bpy.context.view_layer.objects.active = src
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.separate(type='SELECTED')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f'    {name} split: {len(lamp_faces_check(src))} left on {end_name}')
+
+        lamp = [o for o in bpy.context.selected_objects if o is not src][-1]
+        lamp.name = name
+        lamp.data.name = name
+        mat = lamp.data.materials[0].copy() if lamp.data.materials else bpy.data.materials.new(name)
+        mat.name = f'lamp_{name.lower()}'
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes['Principled BSDF']
+        bsdf.inputs['Emission Color'].default_value = (*tint, 1.0)
+        # Exported lit, switched off by the app at load: a material exported with zero emission
+        # loses its emissiveFactor and there is nothing left for anything to turn up.
+        bsdf.inputs['Emission Strength'].default_value = 1.0
+        if lamp.data.materials:
+            lamp.data.materials[0] = mat
+        else:
+            lamp.data.materials.append(mat)
 
 
-def make_plate_image(path, text, logo):
+def make_plate_image(path, text):
     """Rendered here rather than painted into the body atlas, so the wording stays a string.
 
     Run through the system interpreter, not Blender's: `sys.executable` inside Blender is Blender,
     and its bundled Python has no PIL."""
     script = f'''
 from PIL import Image, ImageDraw, ImageFont
-import os
 W, H = 640, 160
 im = Image.new('RGB', (W, H), (250, 250, 248))
 d = ImageDraw.Draw(im)
 d.rounded_rectangle([5, 5, W - 6, H - 6], radius=16, outline=(24, 30, 44), width=6)
-x = 34
-logo_path = {logo!r}
-if os.path.exists(logo_path):
-    logo = Image.open(logo_path).convert('RGBA')
-    scale = (H - 74) / logo.height
-    logo = logo.resize((max(1, int(logo.width * scale)), int(logo.height * scale)))
-    im.paste(logo, (x, (H - logo.height) // 2), logo)
-    x += logo.width + 26
-    d.line([(x - 13, 40), (x - 13, H - 40)], fill=(200, 206, 216), width=3)
-font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 52)
+font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 56)
 t = {text!r}
 box = d.textbbox((0, 0), t, font=font)
-d.text((x, (H - (box[3] - box[1])) / 2 - box[1]), t, font=font, fill=(20, 26, 40))
+d.text(((W - (box[2] - box[0])) / 2, (H - (box[3] - box[1])) / 2 - box[1]), t,
+       font=font, fill=(20, 26, 40))
 im.save({path!r})
 '''
     subprocess.run(['/usr/bin/python3', '-c', script], check=True)
@@ -201,7 +249,7 @@ im.save({path!r})
 def add_plate(lo, hi, text):
     size = hi - lo
     path = os.path.join(tempfile.gettempdir(), 'acu_plate.png')
-    make_plate_image(path, text, os.path.abspath(PLATE_LOGO))
+    make_plate_image(path, text)
 
     w = size.x * 0.22
     h = w * 160 / 640
@@ -299,8 +347,7 @@ def main(body_path, devices_path, out_path):
         print(f"  {obj.name}: {len(obj.data.polygons)} faces")
 
     spin_wheels()
-    add_lamp('LAMP_FRONT', lo, hi, front=True)
-    add_lamp('LAMP_REAR', lo, hi, front=False)
+    carve_lamps(lo, hi)
     add_plate(lo, hi, PLATE_TEXT)
 
     bpy.ops.object.select_all(action='SELECT')
