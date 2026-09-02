@@ -415,9 +415,42 @@ class VideoRxModel(BaseModel):
     port: int | None = None
 
 
+# The video flows keti-src -> switch -> keti-rx and never reaches this Pi, so the
+# local UDP relay can't measure it. Poll the switch's video-egress port counter
+# instead (this Pi has the in-band route to the .100.x switches): it sees the real
+# bitrate on the wire regardless of which UDP port the receiver uses.
+VIDEO_EGRESS_SWITCH = os.environ.get("VIDEO_EGRESS_SWITCH", "192.168.100.4")   # C
+VIDEO_EGRESS_PORT = os.environ.get("VIDEO_EGRESS_PORT_NAME", "Gi 1/1")          # -> keti-rx
+_vid_egress = {"t": 0.0, "octets": 0, "mbps": 0.0}
+
+
+def _video_egress_mbps() -> float:
+    """Video bitrate measured at the switch egress toward the receiver."""
+    try:
+        r = d10.rpc(
+            {"jsonrpc": "2.0", "id": 1, "method": "port.statistics.ifGroup.get",
+             "params": [VIDEO_EGRESS_PORT]},
+            host=VIDEO_EGRESS_SWITCH,
+        )
+        res = (r or {}).get("result") or {}
+        octets = int(res.get("TxOctets", 0))
+    except Exception:
+        return _vid_egress["mbps"]
+    now = time.monotonic()
+    if _vid_egress["t"] > 0 and octets >= _vid_egress["octets"]:
+        dt = now - _vid_egress["t"]
+        if dt > 0.5:
+            _vid_egress["mbps"] = (octets - _vid_egress["octets"]) * 8 / dt / 1e6
+    _vid_egress["t"] = now
+    _vid_egress["octets"] = octets
+    return _vid_egress["mbps"]
+
+
 @app.get("/api/video/state")
 def api_video_state() -> dict:
-    return relay.state()
+    st = relay.state()
+    st["kbps"] = round(_video_egress_mbps() * 1000, 1)   # switch-measured, port-independent
+    return st
 
 
 @app.post("/api/video/receiver")
