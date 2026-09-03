@@ -15,6 +15,69 @@ function toast(msg, kind = '') {
 const FLOOD_PRESET = 'flood_hi_512';
 const FLOOD_TC = 'TC7';
 
+// ── HOME live throughput graph (flood Mbps vs video RX Mbps) ─────────────────
+const HOME_N = 40;               // rolling samples
+const floodHist = [], videoHist = [];
+let lastFloodMbps = 0, lastVideoMbps = 0, lastFloodRunning = false, lastVidRecv = false;
+function niceMax(v) {
+  const steps = [10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
+  for (const s of steps) if (v <= s) return s;
+  return Math.ceil(v / 500) * 500;
+}
+function sampleHome() {
+  floodHist.push(lastFloodMbps); if (floodHist.length > HOME_N) floodHist.shift();
+  videoHist.push(lastVideoMbps); if (videoHist.length > HOME_N) videoHist.shift();
+  drawHomeChart();
+}
+function drawHomeChart() {
+  const c = $('homeChart'); if (!c || !c.clientWidth) return;
+  const ctx = c.getContext('2d');
+  const w = c.width = c.clientWidth, h = c.height;
+  const css = getComputedStyle(document.body);
+  const accent = (css.getPropertyValue('--accent') || '#4D9BFF').trim();
+  const green = (css.getPropertyValue('--green') || '#34D399').trim();
+  ctx.clearRect(0, 0, w, h);
+  const padL = 4, padR = 4, padT = 8, padB = 6;
+  const gw = w - padL - padR, gh = h - padT - padB;
+  const peak = Math.max(1, ...floodHist, ...videoHist);
+  const max = niceMax(peak);
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 4; i++) { const y = padT + gh * i / 4; ctx.moveTo(padL, y + .5); ctx.lineTo(w - padR, y + .5); }
+  ctx.stroke();
+  const plot = (data, color) => {
+    if (!data.length) return;
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = padL + (i / (HOME_N - 1)) * gw;
+      const y = padT + gh - (Math.min(v, max) / max) * gh;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+  };
+  plot(floodHist, accent);
+  plot(videoHist, green);
+  const lbl = $('homeChartMax'); if (lbl) lbl.textContent = max + ' Mbps';
+}
+
+// ── TOPOLOGY live state (collision burst reflects flood + video) ─────────────
+function updateTopo() {
+  const burst = document.getElementById('topoBurst');
+  if (burst) burst.style.opacity = (lastFloodRunning && lastVidRecv) ? '1' : '0';
+  const flood = document.getElementById('tlFlood');
+  if (flood) flood.style.opacity = lastFloodRunning ? '1' : '.28';
+  const egress = document.getElementById('tlEgress');
+  if (egress) egress.style.stroke = (lastFloodRunning && !cbsProtected) ? 'var(--red)' : 'var(--green)';
+}
+function topoIps() {
+  const map = { topoIpA: 0, topoIpB: 1, topoIpC: 2 };
+  for (const [id, i] of Object.entries(map)) {
+    const el = document.getElementById(id);
+    if (el && SWITCHES[i]) el.textContent = '.' + SWITCHES[i].split('.').pop();
+  }
+}
+
 // ── switch JSON-RPC ─────────────────────────────────────────────────────────
 let RPCID = 1, HOST = null, PORTS = [], SWITCHES = [];
 let cbsProtected = false;
@@ -54,6 +117,7 @@ async function initSwitches() {
     HOST = b.dataset.host; markSwitch();
     try { await loadPorts(); fillFrerPorts(); } catch {}
   }));
+  topoIps();
   markSwitch();
 }
 function markSwitch() {
@@ -153,6 +217,7 @@ async function genPoll() {
     const ft = $('tFloodTile'); if (ft) ft.className = 'tile ' + (s.running ? 'warn' : 'idle');
     genHist.push(mbps); if (genHist.length > 120) genHist.shift();
     drawSpark('genChart', genHist, 1000);
+    lastFloodMbps = mbps; lastFloodRunning = !!s.running; updateTopo();
   } catch {}
 }
 function drawSpark(id, data, max) {
@@ -180,6 +245,7 @@ async function vidPoll() {
     if ($('tVidState')) $('tVidState').textContent = state;
     if ($('tVidRx')) $('tVidRx').textContent = rx;
     const tile = $('tVidTile'); if (tile) tile.className = 'tile ' + (recv ? 'ok' : 'bad');
+    lastVideoMbps = d.kbps ? d.kbps / 1000 : 0; lastVidRecv = recv; updateTopo();
   } catch {}
 }
 
@@ -338,6 +404,7 @@ async function boot() {
   setInterval(health, 5000);
   setInterval(genPoll, 1000);
   setInterval(vidPoll, 2000);
-  genPoll(); vidPoll();
+  setInterval(sampleHome, 1000);
+  genPoll(); vidPoll(); sampleHome(); updateTopo();
 }
 boot();

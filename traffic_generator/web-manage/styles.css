@@ -263,6 +263,53 @@ pre.console {
   white-space: pre-wrap; word-break: break-all; max-height: 420px; overflow: auto; margin-top: 14px;
 }
 
+/* ── home live throughput chart ───────────────────────────────────────── */
+.chart-card {
+  background: var(--surf); border: 1px solid var(--border); border-radius: 16px;
+  padding: 14px 14px 12px;
+}
+#homeChart { width: 100%; display: block; height: 190px; }
+.chart-legend {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+.lg { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 7px; }
+.lg::before { content: ''; width: 16px; height: 3px; border-radius: 2px; background: var(--dim); }
+.lg-flood::before { background: var(--accent); }
+.lg-video::before { background: var(--green); }
+.lg-ring::before  { background: var(--border2); }
+.chart-scale { margin-left: auto; font-size: 12px; color: var(--dim); font-weight: 700; }
+
+/* ── topology diagram ─────────────────────────────────────────────────── */
+.topo-card {
+  background: var(--surf); border: 1px solid var(--border); border-radius: 16px;
+  padding: 12px 10px 16px;
+}
+#topoSvg { width: 100%; height: auto; display: block; }
+.tl-ring  { stroke: var(--border2); stroke-width: 3; }
+.tl-video { stroke: var(--green); stroke-width: 4.5; stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(52,211,153,.45)); }
+.tl-flood { stroke: var(--red); stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 10 7;
+  filter: drop-shadow(0 0 4px rgba(255,90,110,.45)); }
+.tl-burst { fill: var(--amber); stroke: var(--red); stroke-width: 1.5;
+  filter: drop-shadow(0 0 6px rgba(246,183,64,.6)); }
+#topoBurst { transition: opacity .2s; }
+.tl-node rect { fill: var(--surf2); stroke: var(--border2); stroke-width: 1.5; }
+.tl-sw rect { fill: #141B27; stroke: var(--accent); stroke-width: 2; }
+.tl-pi-flood rect { stroke: rgba(255,90,110,.6); }
+.tl-node text { text-anchor: middle; fill: var(--fg); font-family: var(--sans); }
+.tl-a  { font-size: 26px; font-weight: 800; fill: var(--accent); }
+.tl-ip { font-size: 13px; fill: var(--muted); font-family: var(--mono); }
+.tl-t  { font-size: 14px; font-weight: 800; letter-spacing: .04em; }
+.tl-s  { font-size: 11px; fill: var(--muted); font-weight: 600; }
+.tl-pi-flood .tl-t { fill: var(--red); }
+.tl-pi-rx .tl-t { fill: var(--green); }
+.tl-port { text-anchor: start; fill: var(--muted); font-family: var(--mono); font-size: 12px; }
+.topo-legend { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+  margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.topo-note { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 12px 4px 0; text-align: center; }
+
 /* ── toast ────────────────────────────────────────────────────────────── */
 .toast-tray { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; width: min(92vw, 480px); }
 .toast {

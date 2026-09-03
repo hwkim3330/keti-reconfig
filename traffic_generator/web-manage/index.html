@@ -22,7 +22,8 @@
   <!-- ══ Top-level nav (Home / Advanced) ══════════════════════════════════ -->
   <nav class="topnav" aria-label="Main views">
     <button class="navtab active" data-view="homeView">HOME</button>
-    <button class="navtab" data-view="advancedView">ADVANCED</button>
+    <button class="navtab" data-view="topoView">TOPOLOGY</button>
+    <button class="navtab" data-view="advancedView">PRO</button>
   </nav>
 
   <div class="content">
@@ -52,6 +53,19 @@
           <div class="tile-cap">LINK</div>
           <div class="tile-state" id="tLink">--</div>
           <div class="tile-metric"><b id="tLinkName">--</b><span>switch</span></div>
+        </div>
+      </div>
+
+      <!-- Live throughput graph -->
+      <div class="block">
+        <div class="block-label">Live throughput &middot; flood vs video</div>
+        <div class="chart-card">
+          <canvas id="homeChart" height="190"></canvas>
+          <div class="chart-legend">
+            <span class="lg lg-flood">FLOOD &middot; TC7</span>
+            <span class="lg lg-video">VIDEO &middot; TC0</span>
+            <span class="chart-scale mono" id="homeChartMax">0 Mbps</span>
+          </div>
         </div>
       </div>
 
@@ -88,6 +102,90 @@
         <p class="hint" id="demoHint"></p>
       </div>
 
+    </section>
+
+    <!-- ══════════════════════ TOPOLOGY (구성도) ════════════════════════ -->
+    <section id="topoView" class="topview">
+      <div class="block-label">Demo path &middot; video best-effort vs TC7 flood</div>
+      <div class="topo-card">
+        <svg id="topoSvg" viewBox="0 0 680 660" width="100%" role="img"
+             aria-label="TSN demo topology: video source through switch ring to receiver, TC7 flood colliding at switch C egress">
+          <defs>
+            <marker id="arrGreen" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto">
+              <path d="M0,0 L7,3.2 L0,6.4 Z" fill="#34D399"></path>
+            </marker>
+            <marker id="arrRed" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto">
+              <path d="M0,0 L7,3.2 L0,6.4 Z" fill="#FF5A6E"></path>
+            </marker>
+          </defs>
+
+          <!-- ring links (A-B, B-C, A-C) drawn under the nodes -->
+          <line x1="340" y1="176" x2="130" y2="392" class="tl-ring"></line>
+          <line x1="130"  y1="392" x2="520" y2="392" class="tl-ring"></line>
+
+          <!-- video route: SRC -> A -> C -> RX (green, highlighted) -->
+          <line x1="340" y1="94"  x2="340" y2="130" class="tl-video" marker-end="url(#arrGreen)"></line>
+          <line x1="340" y1="176" x2="520" y2="360" class="tl-video" marker-end="url(#arrGreen)"></line>
+          <line x1="520" y1="428" x2="520" y2="536" class="tl-video" id="tlEgress" marker-end="url(#arrGreen)"></line>
+
+          <!-- flood: FLOOD Pi -> C (red, TC7) -->
+          <line x1="298" y1="544" x2="486" y2="424" class="tl-flood" id="tlFlood" marker-end="url(#arrRed)"></line>
+
+          <!-- collision burst at C egress -->
+          <g id="topoBurst" transform="translate(520,486)">
+            <path d="M0,-17 L4,-5 L16,-6 L6,2 L10,15 L0,7 L-10,15 L-6,2 L-16,-6 L-4,-5 Z" class="tl-burst"></path>
+          </g>
+
+          <!-- video source Pi -->
+          <g class="tl-node tl-pi">
+            <rect x="281" y="30" width="118" height="60" rx="12"></rect>
+            <text x="340" y="55" class="tl-t">VIDEO SRC</text>
+            <text x="340" y="76" class="tl-s">Pi &middot; TC0</text>
+          </g>
+
+          <!-- switch A -->
+          <g class="tl-node tl-sw">
+            <rect x="275" y="130" width="130" height="66" rx="14"></rect>
+            <text x="340" y="160" class="tl-a">A</text>
+            <text x="340" y="182" class="tl-ip" id="topoIpA">.1</text>
+          </g>
+          <!-- switch B -->
+          <g class="tl-node tl-sw">
+            <rect x="65" y="359" width="130" height="66" rx="14"></rect>
+            <text x="130" y="389" class="tl-a">B</text>
+            <text x="130" y="411" class="tl-ip" id="topoIpB">.2</text>
+          </g>
+          <!-- switch C (egress to receiver) -->
+          <g class="tl-node tl-sw">
+            <rect x="455" y="359" width="130" height="66" rx="14"></rect>
+            <text x="520" y="389" class="tl-a">C</text>
+            <text x="520" y="411" class="tl-ip" id="topoIpC">.4</text>
+          </g>
+
+          <!-- egress port label -->
+          <text x="536" y="486" class="tl-port">Gi1/1</text>
+
+          <!-- flood Pi -->
+          <g class="tl-node tl-pi tl-pi-flood">
+            <rect x="216" y="536" width="118" height="60" rx="12"></rect>
+            <text x="275" y="561" class="tl-t">FLOOD</text>
+            <text x="275" y="582" class="tl-s">Pi &middot; TC7</text>
+          </g>
+          <!-- video receiver Pi -->
+          <g class="tl-node tl-pi tl-pi-rx">
+            <rect x="461" y="536" width="118" height="60" rx="12"></rect>
+            <text x="520" y="561" class="tl-t">VIDEO RX</text>
+            <text x="520" y="582" class="tl-s">Pi</text>
+          </g>
+        </svg>
+
+        <div class="topo-legend">
+          <span class="lg lg-video">VIDEO best-effort TC0</span>
+          <span class="lg lg-flood">FLOOD TC7</span>
+          <span class="lg lg-ring">ring link</span>
+        </div>
+        <p class="topo-note" id="topoNote">Video egresses C Gi1/1 to the receiver. The TC7 flood outranks it at the same port &mdash; CBS reserves the video queue to protect it.</p>
+      </div>
     </section>
 
     <!-- ══════════════════════ ADVANCED ═════════════════════════════════ -->
