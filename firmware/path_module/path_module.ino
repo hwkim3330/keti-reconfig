@@ -19,9 +19,14 @@ constexpr int kLedPin = 48;  // addressable WS2812; confirmed by tools/led_probe
 
 constexpr uint32_t kHeartbeatMs = 1000;
 
-// One firmware for both boards: identity comes from the chip, not from a build flag, so the
-// two modules cannot be swapped by flashing the wrong file. An unknown board says so rather
+// One firmware for every board: identity comes from the chip, not from a build flag, so the
+// modules cannot be swapped by flashing the wrong file. An unknown board says so rather
 // than claiming to be path 1.
+//
+// Four modules now. 1 and 2 are the original pair; 3 and 4 are the boards added on 2026-09-03,
+// read off their USB serial descriptors, which the ESP32-S3 fills in with the same base MAC
+// this table matches on. Verify the board agrees rather than trusting that: it prints its own
+// identity every 5 s in loop(), and an entry pasted one digit wrong shows up as PATH-UNKNOWN.
 struct KnownBoard {
   uint64_t mac;
   int pathIndex;
@@ -29,6 +34,8 @@ struct KnownBoard {
 const KnownBoard kBoards[] = {
     {0x288485'6F46E8ULL, 1},
     {0x288485'6F48E0ULL, 2},
+    {0x288485'6F4A54ULL, 3},
+    {0x288485'6F4868ULL, 4},
 };
 
 static const char *kServiceUuid = "9a1e0001-4d3b-4a2f-9c6e-3f1d7b8a2c40";
@@ -57,8 +64,12 @@ BLECharacteristic *control = nullptr;
 // identical, and the rhythm is the only thing that says the firmware is still running.
 //
 // Two channels, one meaning each:
-//   colour -- which module, and whether the path is cut. Path 1 green, path 2 blue, red when
-//             faulted. Two modules on a bench are then told apart without a label.
+//   colour -- which module, and whether the path is cut. Path 1 green, 2 blue, 3 cyan,
+//             4 magenta, red when faulted. Four modules on a bench are then told apart
+//             without a label. None of the four carries enough red to be mistaken for the
+//             fault colour at a glance, which is why 3 and 4 are not amber and orange.
+//             An unidentified board is white: it used to fall through to green and so looked
+//             exactly like path 1, which is the one board it must not be confused with.
 //   rate   -- whether the tablet is attached. Slow is connected, fast is running unattended.
 //             Fault deliberately does not change the rate: it already has a colour, and
 //             overloading the rate would cost the link indication.
@@ -66,10 +77,14 @@ void updateLed() {
   uint8_t r = 0, g = 0, b = 0;
   if (faulted) {
     r = 200;
-  } else if (pathIndex == 2) {
-    b = 170;
   } else {
-    g = 170;  // path 1, and an unidentified board, which its BLE name already flags
+    switch (pathIndex) {
+      case 1: g = 170; break;
+      case 2: b = 170; break;
+      case 3: g = 140; b = 140; break;
+      case 4: r = 150; b = 150; break;
+      default: r = g = b = 120; break;  // unidentified; its BLE name flags it too
+    }
   }
 
   // Slow blink at 2 s is calm enough to read as a state rather than an alarm, and still makes
