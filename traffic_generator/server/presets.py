@@ -110,23 +110,25 @@ PRESETS: dict[str, dict] = {
         ],
     },
     "flood_hi_512": {
-        "label": "Flood · 512B · PCP7 (TC7)",
-        "note": "Small-frame line rate tagged VLAN100 PCP7 -> TC7, so it OUTRANKS the "
-        "best-effort video and starves it. This is the 'break the video' flood: without "
-        "CBS the higher-priority storm wins; CBS reserving the video's queue is what saves it.",
+        "label": "Flood · line rate · PCP7 (TC7)",
+        "note": "1 Gbps line-rate storm (1518B x2 cores) tagged VLAN100 PCP7 -> TC7. It "
+        "FILLS the video's egress link so the 4 Mbps best-effort video has no room left and "
+        "breaks. 512B tops out ~950 Mbps on a Pi 4, which leaves headroom and does NOT break "
+        "the video - line rate is needed to saturate. CBS reserving the video queue protects it.",
         "streams": [
             {
-                "name": "kill",
-                "frame_size": 512,
+                "name": f"kill{i}",
+                "frame_size": 1518,
                 "vlan_id": 100,
                 "pcp": 7,
                 "rate_mode": "max",
                 "rate_value": 0,
-                "cpu": 0,
-                "queue": 0,
+                "cpu": i,
+                "queue": i,
                 "clone_skb": 100000,
                 "burst": 8,
             }
+            for i in range(2)
         ],
     },
     "flood_hi_64": {
