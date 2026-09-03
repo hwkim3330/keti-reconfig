@@ -69,6 +69,13 @@ function updateTopo() {
   if (flood) flood.style.opacity = lastFloodRunning ? '1' : '.28';
   const egress = document.getElementById('tlEgress');
   if (egress) egress.style.stroke = (lastFloodRunning && !cbsProtected) ? 'var(--red)' : 'var(--green)';
+  // the flood enters at B and rides the B-C ring to reach C's egress
+  const ringBC = document.getElementById('tlRingBC');
+  if (ringBC) {
+    ringBC.style.stroke = lastFloodRunning ? 'var(--red)' : '';
+    ringBC.style.strokeWidth = lastFloodRunning ? '3.5' : '';
+    ringBC.style.opacity = lastFloodRunning ? '1' : '';
+  }
 }
 function topoIps() {
   const map = { topoIpA: 0, topoIpB: 1, topoIpC: 2 };
