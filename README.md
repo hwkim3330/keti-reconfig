@@ -23,8 +23,11 @@ Android 태블릿 ─────┤          (W5500, 192.168.1.20)             
 `kBoards[]` 에 MAC 두 줄을 추가한 것이 전부다. **노드 개수 = 경로 개수.**
 
 태블릿 쪽 콘솔은 두 갈래다. `apps/keti_tsn_console` 는 Galaxy Tab S7 FE 용이고,
-`apps/keti_launcher` 는 **레노버 7인치(TB-8504F)의 홈 런처**로 패스 모듈 4개만 다룬다 —
-그 태블릿에서는 3D/WebView 콘솔이 안 돈다.
+**레노버 7인치(TB-8504F)** 용은 **별도 레포**로 나갔다 —
+[`hwkim3330/keti-launcher`](https://github.com/hwkim3330/keti-launcher).
+태블릿이 다르고 제약도 다르기 때문이다: 그 기기(SD425 / 2GB / API 25)에서는 3D·WebView 콘솔이
+안 돌아서, 패스 모듈만 다루는 경량 앱 겸 홈 런처로 따로 만들었다. `apps/keti_launcher` 는
+분리 시점의 사본이고, **이후 작업은 새 레포에서 한다.**
 
 ## 트래픽 제너레이터 ([`traffic_generator/`](traffic_generator/))
 
