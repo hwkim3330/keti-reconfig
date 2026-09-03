@@ -1,11 +1,11 @@
 /* KETI TSN Reconfig Console — premium dark, touch-first, portrait 720x1280.
    Home = glanceable demo. Advanced = full engineering controls. */
 :root {
-  --bg:      #071630;
-  --bg2:     #0A1E3E;
-  --surf:    #0F2750;
-  --surf2:   #15315F;
-  --surf3:   #1E3E72;
+  --bg:      #05070C;
+  --bg2:     #0A0D14;
+  --surf:    #11151E;
+  --surf2:   #171D28;
+  --surf3:   #212938;
   --border:  rgba(255,255,255,.10);
   --border2: rgba(255,255,255,.17);
   --fg:      #EAF1FB;
@@ -42,15 +42,17 @@ body {
 .topbar {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 18px;
-  background: linear-gradient(180deg, rgba(15,39,80,.95), rgba(7,22,48,.82));
+  background: linear-gradient(180deg, rgba(17,21,30,.95), rgba(5,7,12,.82));
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 20;
 }
 .brand-logo {
-  background: #FFFFFF; border-radius: 11px; padding: 7px 11px;
-  display: flex; align-items: center; box-shadow: 0 2px 12px rgba(0,0,0,.4);
+  background: transparent; border-radius: 0; padding: 0;
+  display: flex; align-items: center; box-shadow: none;
 }
+/* logo art is dark-on-transparent; invert it to a clean white mark on black */
+.brand-logo img { filter: brightness(0) invert(1); }
 .brand-logo img { height: 26px; display: block; }
 .wordmark { font-weight: 800; color: #1B75BC; letter-spacing: .04em; font-size: 20px; }
 .brand-title { font-weight: 700; font-size: 17px; letter-spacing: .01em; line-height: 1.05; display: flex; flex-direction: column; }
