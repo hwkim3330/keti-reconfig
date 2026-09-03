@@ -69,10 +69,26 @@ that moment and is dropped rather than greyed out.
 - **Log** — what happened and when. Kept off the home screen so the tiles answer one question.
 - **앱** — the drawer, so the tablet is still a tablet. Loaded on first open, not at startup.
 
+## Scan cadence
+
+12 s scanning, 6 s idle. Android allows **five scan starts per 30 s** and past that quietly stops
+returning results — no exception, no empty callback, just a rig that looks unpowered. The first
+version of this app restarted the scan every 7 s because it treated `startScan()` returning as
+the scan *finishing*; it returns as soon as the scan is running. Scanning state now comes from
+`FlutterBluePlus.isScanning`, and the gap is timed from the scan actually stopping.
+
+The scan is stopped before each connect. This tablet's controller is from 2017 and connecting
+underneath a running scan is unreliable on it; the modules come up one at a time instead —
+connect, resume the scan, find the next. A module that drops is reconnected straight to its
+remembered address rather than waiting for a scan window, on a widening delay so that one held
+by another central is not hammered.
+
 ## Known
 
-- One central at a time. The older consoles on the S7 FE also scan for `KETI-PATH1..3`, and
-  whichever tablet connects first holds the module — the other one sits at *연결 안 됨*. Close
-  the app on the other tablet before running this one.
+- One central at a time. The older consoles also scan for `KETI-PATH1..3`; whichever central
+  connects first holds the module, and the module stops advertising while held, so the loser sees
+  nothing at all. If a tile stays at *연결 안 됨* while the board's serial says `tablet=yes`,
+  something else has it — close that app, or pulse the board's EN line to make it drop and
+  re-advertise (`dtr=False, rts=True, 0.3 s, rts=False` over its USB serial).
 - Modules 1 and 2 are the original pair. If they are not powered, their tiles stay dark; that is
   the rig, not the app.

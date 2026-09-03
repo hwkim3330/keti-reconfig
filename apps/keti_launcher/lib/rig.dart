@@ -132,13 +132,23 @@ class Rig extends ChangeNotifier {
   List<LogLine> get log => List.unmodifiable(_log);
 
   final Map<int, BluetoothDevice> _devices = {};
+
+  /// Every module we have ever seen, kept after it drops. A module that reboots is advertising
+  /// again within a second or two, and connecting straight to a remembered address beats waiting
+  /// for the next scan window to come round.
+  final Map<int, BluetoothDevice> _known = {};
   final Map<int, BluetoothCharacteristic> _controls = {};
   final Map<int, StreamSubscription<List<int>>> _valueSubs = {};
   final Map<int, StreamSubscription<BluetoothConnectionState>> _connSubs = {};
   final Set<int> _connecting = {};
 
+  /// Consecutive failed attempts per module, so a module another central is holding is retried
+  /// on a widening delay instead of hammered every two seconds for as long as the demo lasts.
+  final Map<int, int> _attempts = {};
+
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<bool>? _isScanningSub;
   Timer? _tick;
   Timer? _rescan;
   bool _disposed = false;
@@ -181,6 +191,16 @@ class Rig extends ChangeNotifier {
       }
     });
 
+    // Scanning state comes from the plugin, not from when startScan() returned. startScan()
+    // returns as soon as the scan is *running*, so treating that as the end of a scan restarted
+    // one every few seconds -- Android allows five starts per 30 s and then quietly stops
+    // returning results, which looks exactly like a rig with no modules powered on.
+    _isScanningSub = FlutterBluePlus.isScanning.listen((on) {
+      _scanning = on;
+      notifyListeners();
+      if (!on) _scheduleRescan();
+    });
+
     // One timer redraws the ages and expires stale reports. Every tile reads the same clock, so
     // there is no per-tile timer to leak on a device this small.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -193,10 +213,10 @@ class Rig extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> startScan() async {
-    if (_disposed || _scanning || _adapter != AdapterState.ready) return;
-    if (_links.values.every((l) => l.state == LinkState.connected)) return;
-    _scanning = true;
-    notifyListeners();
+    if (_disposed || _scanning || _connecting.isNotEmpty) return;
+    if (_adapter != AdapterState.ready) return;
+    if (_allConnected) return;
+    _rescan?.cancel();
 
     await _scanSub?.cancel();
     _scanSub = FlutterBluePlus.scanResults.listen(_onScanResults);
@@ -206,23 +226,27 @@ class Rig extends ChangeNotifier {
       // than the radio work.
       await FlutterBluePlus.startScan(
         withServices: [_serviceUuid],
-        timeout: const Duration(seconds: 20),
+        timeout: _scanWindow,
       );
     } catch (e) {
       _note(0, 'scan failed: $e');
+      notifyListeners();
+      _scheduleRescan();
     }
-    _scanning = false;
-    _scheduleRescan();
-    notifyListeners();
   }
 
-  /// Android throttles an app to five scan starts per 30 s and then silently stops returning
-  /// results. Restarts are spaced rather than chained off the previous scan ending.
+  /// A 12 s window with a 6 s gap: under two scan starts per 30 s, where Android's cap is five.
+  /// Exceeding it does not fail loudly -- the scan simply stops returning results.
+  static const Duration _scanWindow = Duration(seconds: 12);
+  static const Duration _scanGap = Duration(seconds: 6);
+
+  bool get _allConnected =>
+      _links.values.every((l) => l.state == LinkState.connected);
+
   void _scheduleRescan() {
     _rescan?.cancel();
-    if (_disposed) return;
-    if (_links.values.every((l) => l.state == LinkState.connected)) return;
-    _rescan = Timer(const Duration(seconds: 7), startScan);
+    if (_disposed || _scanning || _allConnected) return;
+    _rescan = Timer(_scanGap, startScan);
   }
 
   void _onScanResults(List<ScanResult> results) {
@@ -232,6 +256,7 @@ class Rig extends ChangeNotifier {
           : r.advertisementData.advName;
       for (var n = 1; n <= pathCount; n++) {
         if (name != pathName(n)) continue;
+        _known[n] = r.device;
         _links[n] = _links[n]!.copyWith(rssi: r.rssi);
         if (_links[n]!.state == LinkState.missing) _connect(n, r.device);
       }
@@ -247,12 +272,19 @@ class Rig extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> _connect(int n, BluetoothDevice device) async {
-    if (_connecting.contains(n)) return;
+    if (_connecting.contains(n) || _links[n]!.state == LinkState.connected) return;
     _connecting.add(n);
+    _known[n] = device;
     _links[n] = _links[n]!.copyWith(state: LinkState.connecting);
     notifyListeners();
 
     try {
+      // Stop scanning first. Connecting with a scan running is unreliable on this tablet's
+      // stack -- it is a 2017 controller -- and the modules come up one at a time anyway:
+      // connect, resume the scan, find the next.
+      _rescan?.cancel();
+      if (_scanning) await FlutterBluePlus.stopScan();
+
       await _connSubs[n]?.cancel();
       _connSubs[n] = device.connectionState.listen((s) {
         if (s == BluetoothConnectionState.disconnected) _onDisconnected(n);
@@ -281,6 +313,7 @@ class Rig extends ChangeNotifier {
       _devices[n] = device;
       _controls[n] = control;
       _links[n] = _links[n]!.copyWith(state: LinkState.connected, pending: false);
+      _attempts[n] = 0;
       _note(n, 'connected');
       notifyListeners();
 
@@ -288,12 +321,13 @@ class Rig extends ChangeNotifier {
       // blank for a second after connecting reads as a failure.
       await control.write(utf8.encode('!SYNC'), withoutResponse: false);
     } catch (e) {
-      _note(n, 'connect failed: $e');
+      _attempts[n] = (_attempts[n] ?? 0) + 1;
+      _noteOnce('connfail$n${_attempts[n]}', n, 'connect failed: $e');
       _links[n] = _links[n]!.copyWith(state: LinkState.missing);
       notifyListeners();
     } finally {
       _connecting.remove(n);
-      _scheduleRescan();
+      if (_connecting.isEmpty) _scheduleRescan();
     }
   }
 
@@ -307,6 +341,19 @@ class Rig extends ChangeNotifier {
     // to NORMAL by itself, so the last value we hold is known to be wrong from that moment.
     _links[n] = PathLink(path: n, state: LinkState.missing, rssi: _links[n]!.rssi);
     notifyListeners();
+
+    // Go straight back to the address we know rather than waiting for a scan window. A module
+    // that dropped because it rebooted is advertising again immediately, and a scan cycle is
+    // most of a minute of a tile sitting dark for no reason.
+    final known = _known[n];
+    if (known != null) {
+      final delay = Duration(seconds: (2 << (_attempts[n] ?? 0).clamp(0, 3)).clamp(2, 20));
+      Timer(delay, () {
+        if (_disposed || _links[n]!.state != LinkState.missing) return;
+        _connect(n, known);
+      });
+      return;
+    }
     _scheduleRescan();
   }
 
@@ -456,6 +503,7 @@ class Rig extends ChangeNotifier {
     _rescan?.cancel();
     _scanSub?.cancel();
     _adapterSub?.cancel();
+    _isScanningSub?.cancel();
     for (final s in _valueSubs.values) {
       s.cancel();
     }
