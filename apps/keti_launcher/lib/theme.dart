@@ -19,14 +19,18 @@ class K {
   static const ok = Color(0xFF22C55E);
   static const warn = Color(0xFFF59E0B);
 
-  /// Matched to the WS2812 on each board, so the tile and the module on the bench are the same
-  /// colour: path 1 green, 2 blue, 3 cyan, 4 magenta. Whoever is holding the tablet and whoever
-  /// is looking at the rig are then talking about the same thing.
+  /// Matched to the WS2812 on each board, so the tile and the module on the bench carry the same
+  /// colour and whoever is holding the tablet and whoever is looking at the rig are talking about
+  /// the same module. Green / blue / white / magenta / cyan. Five identities on one LED with red
+  /// reserved for FAULT is the ceiling: 1, 2 and 5 crowd one side of the wheel, and moving 3 to
+  /// white is what bought the room 5 now uses.
+  /// The canonical table is in `firmware/path_module/path_module.ino`; change both or neither.
   static const pathColours = <int, Color>{
     1: Color(0xFF22C55E),
     2: Color(0xFF3B82F6),
-    3: Color(0xFF06B6D4),
+    3: Color(0xFFE6EAF0),
     4: Color(0xFFD946EF),
+    5: Color(0xFF06B6D4),
   };
 
   static Color pathColour(int n) => pathColours[n] ?? muted;

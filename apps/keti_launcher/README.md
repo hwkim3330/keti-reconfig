@@ -1,6 +1,6 @@
 # keti_launcher
 
-The 7" tablet's **home screen**, and the BLE central for the **four path modules**.
+The 7" tablet's **home screen**, and the BLE central for the **five path modules**.
 
 Package `com.keti.tsn.launcher`, so it installs alongside the other consoles rather than
 replacing them. Verified on the rig tablet: **Lenovo TB-8504F, Android 7.1.1 (API 25),
@@ -32,7 +32,7 @@ It cold-starts in about a second on that tablet.
 
 ## What it controls
 
-Four fault-injection modules over GATT — see `firmware/path_module` and
+Five fault-injection modules over GATT — see `firmware/path_module` and
 `traffic_generator/BLE_GATT.md`:
 
 ```
@@ -42,13 +42,30 @@ control  9a1e0002-4d3b-4a2f-9c6e-3f1d7b8a2c40   write  !SET:FAULT | !SET:NORMAL 
 ```
 
 There is **no pairing and no key**: a command is a UTF-8 string written to a well-known handle.
-That is why modules 3 and 4 needed only a MAC-table entry in the firmware and a reflash to join,
-and why one code path here reaches all four.
+That is why modules 3, 4 and 5 needed only a MAC-table entry in the firmware and a reflash to
+join, and why one code path here reaches all of them. `pathCount` in `lib/rig.dart` is the only
+number in this app that has to agree with the firmware's table.
 
 Each module decides its own number from its eFuse MAC, so a board whose MAC is not in
 `kBoards[]` advertises as `KETI-PATH-UNKNOWN`; the app says so in the log rather than guessing.
-Tile colours match each board's LED — 1 green, 2 blue, 3 cyan, 4 magenta — so the person holding
-the tablet and the person looking at the bench are talking about the same module.
+
+Tile colours match each board's LED, so the person holding the tablet and the person looking at
+the bench are talking about the same module. The canonical table lives in the repo README; the
+two places this app has to keep in step with it are `K.pathColours` in `lib/theme.dart` and
+`pathCount` in `lib/rig.dart`.
+
+| # | LED on the board | tile | note |
+|---|---|---|---|
+| 1 | 초록 | `#22C55E` | |
+| 2 | 파랑 | `#3B82F6` | |
+| 3 | 흰색 | `#E6EAF0` | 원래 시안이었다 — 초록/시안/파랑이 뭉쳐서 뺐다 |
+| 4 | 마젠타 | `#D946EF` | |
+| 5 | 시안 | `#06B6D4` | 3 을 흰색으로 빼서 생긴 자리 |
+| 고장 | 빨강 | `#EF4444` | 어느 모듈이든 |
+| 미등록 | 앰버 | — | `KETI-PATH-UNKNOWN` |
+
+The colour is on the module's **name**, not only the dot next to it: at 10 dp the difference
+between blue and cyan is a guess.
 
 **A connection is not a link.** Every tile carries the module's sequence number and how long ago
 it was heard. The modules heartbeat once a second while a central is attached; anything older
@@ -60,9 +77,9 @@ that moment and is dropped rather than greyed out.
 
 - **Tiles** — one per module. The whole tile is the button; `CUT` / `RESTORE` is also its own
   target for anyone who wants to aim.
-- **Scenario bar** — `전체 복구`, `n 만 절단`, `전체 절단`. `n 만 절단` restores the other three
-  rather than adding to whatever was cut before it; a scenario button that depends on what was
-  pressed before it is not a scenario button.
+- **Scenario bar** — `전체 복구`, `n 만 절단`, `전체 절단`. `n 만 절단` restores every other
+  module rather than adding to whatever was cut before it; a scenario button that depends on
+  what was pressed before it is not a scenario button.
 - **Banner** — appears only when a scan cannot work, with the fix attached: Bluetooth off (turns
   it on in place, rather than sending you into Settings — this app *is* the home screen),
   permission missing, location services off, or not the default home.
@@ -90,5 +107,9 @@ by another central is not hammered.
   nothing at all. If a tile stays at *연결 안 됨* while the board's serial says `tablet=yes`,
   something else has it — close that app, or pulse the board's EN line to make it drop and
   re-advertise (`dtr=False, rts=True, 0.3 s, rts=False` over its USB serial).
-- Modules 1 and 2 are the original pair. If they are not powered, their tiles stay dark; that is
-  the rig, not the app.
+- A tile says which of the two failures it is: *광고는 잡힘* means the board is powered and in
+  range and only the connect is pending, *광고 안 보임* means we have never heard it at all.
+- **A board seated badly boots into download mode.** Its USB enumerates and esptool talks to it
+  perfectly, so the chip looks healthy, but the app never runs: no LED, no serial, no
+  advertisement. `boot:0x20 (DOWNLOAD(USB/UART0))` in the boot log instead of
+  `boot:0x28 (SPI_FAST_FLASH_BOOT)` is the tell — GPIO0 is being held low. Reseat it.

@@ -26,7 +26,15 @@ class PathCard extends StatelessWidget {
     final faulted = report?.faulted ?? false;
 
     final (Color colour, String state, String detail) = switch (link.state) {
-      LinkState.missing => (K.dim, '연결 안 됨', 'advertising 대기'),
+      // Two different faults wear the same word, and they send you to different places. Having
+      // heard an advertisement means the board is powered and in range, so a tile stuck here is
+      // about connecting. Never having heard one means the board is off, out of range, or held
+      // by another central -- a held module stops advertising entirely.
+      LinkState.missing => (
+          K.dim,
+          '연결 안 됨',
+          link.rssi == null ? '광고 안 보임 · 전원/거리/다른 센트럴' : '광고는 잡힘 · 연결 대기'
+        ),
       LinkState.connecting => (K.warn, '연결 중', 'GATT'),
       LinkState.connected when report == null => (K.warn, '대기', '첫 보고 기다리는 중'),
       LinkState.connected when stale => (K.warn, '응답 없음', '${_age(now, report.at)} 전 마지막'),
@@ -71,13 +79,16 @@ class PathCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // The name carries the module's colour, not just the dot beside it. A 10 dp dot
+                  // is the whole identity channel otherwise, and at that size the difference
+                  // between blue and cyan is a guess.
                   Text(
                     'PATH $n',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
-                      color: connected ? K.text : K.dim,
+                      color: connected ? accent : K.dim,
                     ),
                   ),
                   const Spacer(),

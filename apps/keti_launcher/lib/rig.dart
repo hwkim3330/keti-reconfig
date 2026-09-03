@@ -1,4 +1,4 @@
-/// The four fault-injection path modules, over GATT.
+/// The fault-injection path modules, over GATT.
 ///
 /// Each module is an ESP32-S3 SuperMini that decides its own number from its eFuse MAC
 /// (`firmware/path_module`), advertises as `KETI-PATH<n>`, and exposes one characteristic that is
@@ -24,7 +24,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-const int pathCount = 4;
+/// Five modules. The number is the table in `firmware/path_module/path_module.ino` -- every
+/// board decides its own index from its MAC, so this only has to agree on how many exist.
+const int pathCount = 5;
 
 /// Grace before a connected-but-silent module is called stale. Four heartbeats: long enough that
 /// a single dropped notification on a busy 2.4 GHz bench does not flicker the tile.

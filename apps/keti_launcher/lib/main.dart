@@ -237,8 +237,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: LayoutBuilder(
           builder: (context, box) {
             const gap = 10.0;
-            final cols = wide ? 4 : 2;
-            final rows = wide ? 1 : 2;
+            // Portrait keeps two columns and grows downwards; landscape puts the whole rig in one
+            // row, which is how the modules sit on the bench. Both derive from pathCount so
+            // adding a module is a one-line change in rig.dart.
+            final cols = wide ? pathCount : 2;
+            final rows = (pathCount / cols).ceil();
             final cellW = (box.maxWidth - gap * (cols - 1)) / cols;
             final cellH = (box.maxHeight - gap * (rows - 1)) / rows;
             return GridView.count(

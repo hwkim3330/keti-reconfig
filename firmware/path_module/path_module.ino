@@ -31,11 +31,15 @@ struct KnownBoard {
   uint64_t mac;
   int pathIndex;
 };
+// Exactly one board per number. A second entry claiming a number already taken is the failure
+// this table exists to prevent: both would advertise the same name and the tablet would connect
+// to whichever it happened to see first. Add a number, do not double up on one.
 const KnownBoard kBoards[] = {
     {0x288485'6F46E8ULL, 1},
     {0x288485'6F48E0ULL, 2},
     {0x288485'6F4A54ULL, 3},
     {0x288485'6F4868ULL, 4},
+    {0x288485'6F299CULL, 5},
 };
 
 static const char *kServiceUuid = "9a1e0001-4d3b-4a2f-9c6e-3f1d7b8a2c40";
@@ -64,26 +68,41 @@ BLECharacteristic *control = nullptr;
 // identical, and the rhythm is the only thing that says the firmware is still running.
 //
 // Two channels, one meaning each:
-//   colour -- which module, and whether the path is cut. Path 1 green, 2 blue, 3 cyan,
-//             4 magenta, red when faulted. Four modules on a bench are then told apart
-//             without a label. None of the four carries enough red to be mistaken for the
-//             fault colour at a glance, which is why 3 and 4 are not amber and orange.
-//             An unidentified board is white: it used to fall through to green and so looked
-//             exactly like path 1, which is the one board it must not be confused with.
+//   colour -- which module, and whether the path is cut. Four modules on a bench are then told
+//             apart without a label:
+//
+//               1  green    0,180,0
+//               2  blue     0,0,210
+//               3  white    150,150,150
+//               4  magenta  170,0,170
+//               5  cyan     0,150,150
+//               -  amber    200,120,0    board whose MAC is not in kBoards
+//               any red     220,0,0      path cut, whichever module it is
+//
+//             Red is spent on FAULT, so no numbered colour carries red enough to be mistaken
+//             for it. Amber breaks that rule deliberately: an unidentified board is in no path,
+//             so reading a cut on it is harmless, whereas confusing two *numbered* boards is
+//             not. It also stops being white, which is path 3.
+//
+//             Five identities on one LED with red reserved is the ceiling, and it shows: 1, 2
+//             and 5 are green, blue and cyan, which crowd one side of the wheel and ran together
+//             at arm's length when 3 was cyan too. Moving 3 to white bought the room 5 now uses.
+//             A sixth module needs a different channel, not a sixth hue.
 //   rate   -- whether the tablet is attached. Slow is connected, fast is running unattended.
 //             Fault deliberately does not change the rate: it already has a colour, and
 //             overloading the rate would cost the link indication.
 void updateLed() {
   uint8_t r = 0, g = 0, b = 0;
   if (faulted) {
-    r = 200;
+    r = 220;
   } else {
     switch (pathIndex) {
-      case 1: g = 170; break;
-      case 2: b = 170; break;
-      case 3: g = 140; b = 140; break;
-      case 4: r = 150; b = 150; break;
-      default: r = g = b = 120; break;  // unidentified; its BLE name flags it too
+      case 1: g = 180; break;
+      case 2: b = 210; break;
+      case 3: r = 150; g = 150; b = 150; break;
+      case 4: r = 170; b = 170; break;
+      case 5: g = 150; b = 150; break;
+      default: r = 200; g = 120; break;  // unidentified; its BLE name flags it too
     }
   }
 
