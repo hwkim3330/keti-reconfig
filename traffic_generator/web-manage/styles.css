@@ -1,24 +1,24 @@
 /* KETI TSN Reconfig Console — premium dark, touch-first, portrait 720x1280.
    Home = glanceable demo. Advanced = full engineering controls. */
 :root {
-  --bg:      #F4F6F9;
-  --bg2:     #EAEEF4;
-  --surf:    #FFFFFF;
-  --surf2:   #F7F9FC;
-  --surf3:   #EEF2F7;
-  --border:  rgba(17,24,39,.10);
-  --border2: rgba(17,24,39,.16);
-  --fg:      #111827;
-  --muted:   #5B6672;
-  --dim:     #8A94A3;
-  --accent:  #1E6FE0;
-  --accentD: #1655B8;
-  --green:   #0F9D58;
-  --greenD:  #0B7A43;
-  --red:     #DC2626;
-  --redD:    #B01B1B;
-  --amber:   #C77D11;
-  --hex:     #2E6FA8;
+  --bg:      #071630;
+  --bg2:     #0A1E3E;
+  --surf:    #0F2750;
+  --surf2:   #15315F;
+  --surf3:   #1E3E72;
+  --border:  rgba(255,255,255,.10);
+  --border2: rgba(255,255,255,.17);
+  --fg:      #EAF1FB;
+  --muted:   #9FB0C9;
+  --dim:     #6B7C99;
+  --accent:  #4D9BFF;
+  --accentD: #2E7BE0;
+  --green:   #34D399;
+  --greenD:  #0F7A54;
+  --red:     #FF5A6E;
+  --redD:    #B5273A;
+  --amber:   #F6B740;
+  --hex:     #7FB4E6;
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: 'Cascadia Mono', Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace;
 }
@@ -27,8 +27,8 @@
 html, body { margin: 0; height: 100%; }
 body {
   background:
-    radial-gradient(1100px 700px at 80% -10%, rgba(30,111,224,.07), transparent 60%),
-    radial-gradient(900px 600px at -10% 110%, rgba(15,157,88,.05), transparent 55%),
+    radial-gradient(1100px 700px at 80% -10%, rgba(77,155,255,.14), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(52,211,153,.07), transparent 55%),
     var(--bg);
   color: var(--fg);
   font-family: var(--sans);
@@ -42,14 +42,14 @@ body {
 .topbar {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 18px;
-  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,249,252,.88));
+  background: linear-gradient(180deg, rgba(15,39,80,.95), rgba(7,22,48,.82));
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 20;
 }
 .brand-logo {
-  background: transparent; border-radius: 0; padding: 0;
-  display: flex; align-items: center; box-shadow: none;
+  background: #FFFFFF; border-radius: 11px; padding: 7px 11px;
+  display: flex; align-items: center; box-shadow: 0 2px 12px rgba(0,0,0,.4);
 }
 .brand-logo img { height: 26px; display: block; }
 .wordmark { font-weight: 800; color: #1B75BC; letter-spacing: .04em; font-size: 20px; }
@@ -140,7 +140,7 @@ body {
 }
 .act:active { transform: scale(.975); }
 .act .act-t { font-size: 21px; font-weight: 800; letter-spacing: .03em; }
-.act .act-s { font-size: 12px; color: var(--muted); font-weight: 500; line-height: 1.25; }
+.act .act-s { font-size: 12px; color: rgba(255,255,255,.72); font-weight: 500; line-height: 1.25; }
 .act-flood   { background: linear-gradient(160deg, #FF6A5A, #C42846); border-color: rgba(255,120,110,.5); box-shadow: 0 8px 22px rgba(196,40,70,.28); }
 .act-flood .act-t { color: #FFFFFF; }
 .act-flood .act-s { color: rgba(255,255,255,.85); }
