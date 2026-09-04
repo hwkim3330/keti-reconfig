@@ -23,10 +23,10 @@ constexpr uint32_t kHeartbeatMs = 1000;
 // modules cannot be swapped by flashing the wrong file. An unknown board says so rather
 // than claiming to be path 1.
 //
-// Four modules now. 1 and 2 are the original pair; 3 and 4 are the boards added on 2026-09-03,
-// read off their USB serial descriptors, which the ESP32-S3 fills in with the same base MAC
-// this table matches on. Verify the board agrees rather than trusting that: it prints its own
-// identity every 5 s in loop(), and an entry pasted one digit wrong shows up as PATH-UNKNOWN.
+// Six modules now. 1 and 2 are the original pair; 3 to 6 were added on 2026-09-03, each read off
+// its USB serial descriptor, which the ESP32-S3 fills in with the same base MAC this table
+// matches on. Verify the board agrees rather than trusting that: it prints its own identity
+// every 5 s in loop(), and an entry pasted one digit wrong shows up as PATH-UNKNOWN.
 struct KnownBoard {
   uint64_t mac;
   int pathIndex;
@@ -40,6 +40,7 @@ const KnownBoard kBoards[] = {
     {0x288485'6F4A54ULL, 3},
     {0x288485'6F4868ULL, 4},
     {0x288485'6F299CULL, 5},
+    {0x288485'6F4928ULL, 6},
 };
 
 static const char *kServiceUuid = "9a1e0001-4d3b-4a2f-9c6e-3f1d7b8a2c40";
@@ -68,7 +69,7 @@ BLECharacteristic *control = nullptr;
 // identical, and the rhythm is the only thing that says the firmware is still running.
 //
 // Two channels, one meaning each:
-//   colour -- which module, and whether the path is cut. Four modules on a bench are then told
+//   colour -- which module, and whether the path is cut. The modules on a bench are then told
 //             apart without a label:
 //
 //               1  green    0,180,0
@@ -76,22 +77,28 @@ BLECharacteristic *control = nullptr;
 //               3  white    150,150,150
 //               4  magenta  170,0,170
 //               5  cyan     0,150,150
-//               -  amber    200,120,0    board whose MAC is not in kBoards
+//               6  yellow   180,180,0
+//               -  alternating white and blue, one colour per blink
 //               any red     220,0,0      path cut, whichever module it is
 //
-//             Red is spent on FAULT, so no numbered colour carries red enough to be mistaken
-//             for it. Amber breaks that rule deliberately: an unidentified board is in no path,
-//             so reading a cut on it is harmless, whereas confusing two *numbered* boards is
-//             not. It also stops being white, which is path 3.
+//             Red is spent on FAULT, so no numbered colour carries red enough to be mistaken for
+//             it. Yellow is the edge of that rule and stays on the right side of it only because
+//             its red and green are equal -- an amber, with red dominant, does read as a dim red
+//             across a bench. That is also why an unidentified board no longer *is* amber.
 //
-//             Five identities on one LED with red reserved is the ceiling, and it shows: 1, 2
-//             and 5 are green, blue and cyan, which crowd one side of the wheel and ran together
-//             at arm's length when 3 was cyan too. Moving 3 to white bought the room 5 now uses.
-//             A sixth module needs a different channel, not a sixth hue.
+//             Six steady hues is the ceiling with red reserved, and 6 spends the last one. So the
+//             unidentified board stopped competing for a hue and moved to a different channel
+//             instead: it changes colour between blinks. No numbered module ever does, so "the
+//             one that keeps changing" is unmistakable, and it costs no hue at all. A seventh
+//             module should take the same route rather than hunting for a seventh colour.
 //   rate   -- whether the tablet is attached. Slow is connected, fast is running unattended.
 //             Fault deliberately does not change the rate: it already has a colour, and
 //             overloading the rate would cost the link indication.
 void updateLed() {
+  // Hoisted above the colour choice: an unidentified board alternates its colour once per blink,
+  // so it needs to know how long a blink is.
+  const uint32_t period = tabletConnected ? 2000 : 500;
+
   uint8_t r = 0, g = 0, b = 0;
   if (faulted) {
     r = 220;
@@ -102,14 +109,22 @@ void updateLed() {
       case 3: r = 150; g = 150; b = 150; break;
       case 4: r = 170; b = 170; break;
       case 5: g = 150; b = 150; break;
-      default: r = 200; g = 120; break;  // unidentified; its BLE name flags it too
+      case 6: r = 180; g = 180; break;
+      default:
+        // Unidentified: alternate white and blue, one colour per blink. Its BLE name flags it
+        // too, but this is the one anybody standing at the bench will notice first.
+        if ((millis() / period) % 2 == 0) {
+          r = g = b = 150;
+        } else {
+          b = 210;
+        }
+        break;
     }
   }
 
   // Slow blink at 2 s is calm enough to read as a state rather than an alarm, and still makes
   // a stopped board obvious within a couple of seconds. Unattended is four times faster, which
   // reads as searching without either rate looking irregular.
-  const uint32_t period = tabletConnected ? 2000 : 500;
   const bool dark = (millis() % period) >= period / 2;
 
   if (dark) {
