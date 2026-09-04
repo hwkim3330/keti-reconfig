@@ -152,6 +152,13 @@ void notifyState(const char *event) {
 void setFaulted(bool value, const char *event) {
   faulted = value;
   applyRelay();
+  // Printed straight after the pin moves, before the BLE notification is built, so the timestamp
+  // is as close to the relay as this board can report. It exists so the rig can be measured from
+  // outside the app: with several boards on USB, `tools/skew.py` compares when these lines arrive
+  // and reports how far apart the modules actually moved. An app that measures only itself is not
+  // evidence.
+  Serial.printf("%lu EDGE %s %s %s\n", (unsigned long)millis(), identity,
+                value ? "FAULT" : "NORMAL", event);
   notifyState(event);
 }
 
